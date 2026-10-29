@@ -1,0 +1,45 @@
+﻿@page "/"
+
+<PageTitle>Meu primeiro Blazor</PageTitle>
+
+<div class="container mt-5">
+    <h1>Olá, mundo!</h1>
+
+    <p>Meu primeiro projeto utilizando Blazor e C#.</p>
+
+    <hr />
+
+    <h2>Contador: @contador</h2>
+
+    <button class="btn btn-primary" @onclick="Adicionar">
+        Adicionar +1
+    </button>
+
+    <button class="btn btn-danger ms-2" @onclick="Zerar">
+        Zerar
+    </button>
+
+    <p class="mt-3">
+        @mensagem
+    </p>
+</div>
+
+@code {
+    int contador = 0;
+
+    string mensagem = "Clique no botão para começar!";
+
+    void Adicionar()
+    {
+        contador++;
+
+        mensagem = "Você adicionou um número!";
+    }
+
+    void Zerar()
+    {
+        contador = 0;
+
+        mensagem = "O contador foi zerado!";
+    }
+}
