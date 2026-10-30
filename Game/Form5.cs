@@ -2266,11 +2266,11 @@ namespace movimento
             using (Brush dourado = new SolidBrush(Color.FromArgb(255, 240, 207, 112)))
             using (StringFormat centralizado = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
-                string textoTitulo = "JUJUTSU ARENA  /  ESCOLHA SEU LUTADOR";
+                string textoTitulo = "ESCOLHE SEU FEITICEIRO";
                 g.DrawString(textoTitulo, titulo, dourado,
                     new RectangleF(0, 8, LarguraBase, 38), centralizado);
 
-                string subt = "8 LUTADORES  ·  GOLPES ÚNICOS  ·  2 JOGADORES LOCAIS";
+                string subt = "8 PERSONAGEMS  ·  GOLPES LEGAIS  ·  2 JOGADORES";
                 g.DrawString(subt, subtitulo, branco,
                     new RectangleF(0, 45, LarguraBase, 24), centralizado);
             }
