@@ -1,3 +1,95 @@
+# Jujutsu Arena — Visual refinado e golpes únicos
+
+Esta edição mantém a versão **Blazor WebAssembly Standalone (.NET 10)**,
+compatível com **Visual Studio 2026** e **GitHub Pages**.
+
+## O que mudou
+
+- **Todos os quatro modos:** novo piso escuro, moldura de arena e grade mais discreta.
+- **Site web:** nova paleta de cores, cartões, modo ativo, botões e informações visuais.
+- **Seleção do modo avançado:** miniaturas pixel art reais, indicação dos ataques de cada personagem.
+- **Arena avançada:** cenário com selo no chão, partículas suaves, HUD de vida/poder, tremor leve em impactos e tela de vitória renovada.
+- **Golpes normais:** oito estilos mecânicos e visuais diferentes, sem alterar as teclas F e Enter.
+- **Especiais:** Black Flash, Rika, Sangue Perfurante, Lança Invertida, Projeção, Roxo, Santuário e Dez Sombras preservados.
+
+### Os oito golpes básicos do modo Combate Avançado
+
+| Lutador | Golpe básico próprio | Diferença |
+|---|---|---|
+| **Yuji Itadori** | Punho Divergente | dois impactos separados por alguns quadros |
+| **Yuta Okkotsu** | Katana Amaldiçoada | alcance maior, reforço pelo especial de Rika |
+| **Choso** | Rajada Carmesim | ataque direto de longo alcance |
+| **Toji Fushiguro** | Investida da Lança | avança antes de atingir o adversário |
+| **Naoya Zenin** | Projeção Rápida | golpe veloz e breve interrupção do movimento |
+| **Gojo Satoru** | Pulso Azul | onda circular que empurra o adversário |
+| **Ryomen Sukuna** | Desmantelar | corte de alcance ampliado |
+| **Megumi Fushiguro** | Garras Sombrias | ataque que recebe bônus quando há sombra invocada |
+
+**Controles:** J1: WASD, F e Q. J2: setas, Enter e Shift.
+Na seleção: A/D + F e ←/→ + Enter. Use o botão **Reiniciar** para nova partida.
+
+## Instalar e testar
+
+1. Extraia o ZIP em pasta nova e abra `MovimentoWeb.sln` no Visual Studio 2026.
+2. Execute `DIAGNOSTICAR_COMPILACAO.cmd` para compilar ou `Ctrl+Shift+B` no Visual Studio.
+3. Use `Ctrl+F5` para testar no navegador.
+4. Se desejar atualizar um repositório GitHub Pages existente, **envie todos os arquivos alterados**, principalmente:
+   - `Game/Form2.cs`, `Game/Form3.cs`, `Game/Form4.cs`, `Game/Form5.cs`
+   - `Game/ArenaVisual.cs` (**arquivo novo, obrigatório**)
+   - `Pages/Index.razor`
+   - `wwwroot/css/app.css` e `wwwroot/index.html`
+5. Faça commit e push na branch `main`. Em Settings → Pages, escolha GitHub Actions.
+6. Acompanhe o workflow `.github/workflows/pages.yml` até aparecer concluído.
+
+**Nota de compatibilidade:** não usa Windows Forms ou System.Drawing.Common no navegador.
+Foi feita verificação estrutural dos arquivos C# e teste de sintaxe JavaScript.
+**A compilação C# não foi executada neste ambiente**, que não possui o SDK .NET.
+Se ocorrer falha, envie o arquivo gerado `diagnostico-compilacao.txt`.
+
+---
+
+# Movimento RPG — Jujutsu: Choso e Toji
+
+Atualização da versão **Blazor WebAssembly Standalone** que substitui:
+- **Kento Nanami → Choso**, com Sangue Perfurante.
+- **Mahito → Toji Fushiguro**, com a Lança Invertida do Céu.
+
+**Continuam no jogo:** Yuji Itadori, Yuta Okkotsu, Naoya Zenin,
+Gojo Satoru, Ryomen Sukuna e Megumi Fushiguro.
+
+## Habilidades no modo Combate
+
+| Personagem | Especial | Efeito |
+|---|---|---|
+| Yuji Itadori | Black Flash | até 200 px, 25 de dano e 14 quadros de atordoamento |
+| Yuta Okkotsu | Rika — Corte Amaldiçoado | até 365 px, 19 de dano; recupera 8 de vida e fortalece o próximo golpe |
+| Choso | Sangue Perfurante | até 480 px, 23 de dano e 18 quadros de atordoamento |
+| Toji Fushiguro | Lança Invertida do Céu | até 275 px, 29 de dano e 10 quadros de atordoamento; avança até o alvo |
+
+Choso e Toji receberam **novos sprites em pixel art**, desenhos das técnicas,
+cores, textos e animações. As alterações ficam em `Game/Form5.cs`.
+
+## Instalar no Visual Studio 2026
+
+1. Faça backup do projeto anterior.
+2. Se o projeto anterior já funciona, substitua apenas `Game/Form5.cs`
+   pelo deste ZIP, mantendo todos os outros arquivos.
+3. Para usar a versão completa, extraia o ZIP e abra `MovimentoWeb.sln`.
+4. Execute `DIAGNOSTICAR_COMPILACAO.cmd` ou compile com `Ctrl+Shift+B`;
+   depois inicie com `Ctrl+F5`.
+5. No GitHub, faça commit e push de `Game/Form5.cs` (e README, se quiser).
+   Seu workflow `.github/workflows/pages.yml` recompila e publica o site.
+
+GitHub Pages atual: https://luquinhas-666.github.io/projetinho-jujutsu/
+
+**Verificação:** o código foi revisado quanto a referências antigas, enums
+e balanceamento de delimitadores. Não foi possível executar `dotnet build`
+neste ambiente porque o SDK .NET não está instalado.
+
+---
+
+## Documentação da conversão original
+
 # Movimento RPG — Blazor WebAssembly Standalone
 
 Versão web do projeto `movimento` (Windows Forms, C#/.NET 10), preparada para o **GitHub Pages**.

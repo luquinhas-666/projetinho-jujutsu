@@ -258,17 +258,7 @@ namespace movimento
             base.OnPaint(e);
 
             Graphics g = e.Graphics;
-            g.Clear(Color.FromArgb(95, 155, 85));
-
-            // Grade do cenário
-            using (Pen grade = new Pen(Color.FromArgb(80, 130, 70)))
-            {
-                for (int i = 0; i < ClientSize.Width; i += 32)
-                    g.DrawLine(grade, i, 0, i, ClientSize.Height);
-
-                for (int i = 0; i < ClientSize.Height; i += 32)
-                    g.DrawLine(grade, 0, i, ClientSize.Width, i);
-            }
+            ArenaVisual.Desenhar(g, ClientSize.Width, ClientSize.Height, "DUELO CLÁSSICO");
 
             // Barras de vida
             DesenharBarraVida(g, 20, 20, vida1, Color.DodgerBlue, "JOGADOR 1");
@@ -310,7 +300,7 @@ namespace movimento
 
                 using (Font fonte = new Font("Arial", 14))
                 {
-                    string mensagem = "Feche e abra o jogo novamente para jogar outra partida.";
+                    string mensagem = "Use o botão Reiniciar acima para jogar outra partida.";
                     SizeF tamanho = g.MeasureString(mensagem, fonte);
 
                     g.DrawString(mensagem, fonte, Brushes.White,

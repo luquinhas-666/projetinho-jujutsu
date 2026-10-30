@@ -2,13 +2,13 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<PageTitle>Jogo-Luquinhas</PageTitle>
+<PageTitle>Jujutsu Arena | Movimento RPG</PageTitle>
 
 <div class="site-shell">
     <header class="topbar">
         <a class="brand" href="" aria-label="Movimento RPG, página inicial">
-            <span class="brand-symbol">L</span>
-            <span><strong>JOGO JJK</strong><small>Luquinhas</small></span>
+            <span class="brand-symbol">呪</span>
+            <span><strong>JUJUTSU ARENA</strong><small>MOVIMENTO RPG · WEB EDITION</small></span>
         </a>
         <span class="online-pill"><span class="status-dot"></span> Blazor WebAssembly</span>
     </header>
@@ -16,11 +16,16 @@
     <main>
         <section class="intro">
             <div>
-                <div class="eyebrow">Projeto de movimento</div>
-                <h1>5 Aulas.<em>Sem Rosinha.</em></h1>
-                <p>O suuuper jogo feito em 5 aulas vagas da rosinha.</p>
+                <div class="eyebrow">MOVIMENTO RPG  /  EDIÇÃO FEITICEIROS</div>
+                <h1>O duelo começa <em>agora.</em></h1>
+                <p>Oito lutadores, técnicas especiais e golpes básicos exclusivos. Entre na arena, escolha seu personagem e desafie um amigo no mesmo teclado.</p>
+                <div class="feature-list" aria-label="Recursos do jogo">
+                    <span><b>08</b> lutadores</span>
+                    <span><b>02</b> jogadores</span>
+                    <span><b>04</b> modos</span>
+                </div>
             </div>
-            <div class="version-tag">Versão de teste <span>web</span></div>
+            <div class="version-tag">ATUALIZAÇÃO <span>02</span></div>
         </section>
 
         <section class="game-panel" aria-label="Área do jogo">
@@ -48,7 +53,7 @@
             </div>
             <div class="game-footer">
                 <span><span class="live-dot"></span> JOGO LOCAL / SEM BACKEND</span>
-                <span>1000 × 650 · HTML CANVAS 2D</span>
+                <span>VISUAIS REFINADOS · GOLPES ÚNICOS</span>
             </div>
         </section>
 
@@ -86,7 +91,7 @@
             <p class="control-note">Na seleção de personagens: jogador 1 usa A/D para escolher e F para confirmar; jogador 2 usa ←/→ e Enter. Os poderes especiais estão disponíveis nos modos 03 e 04.</p>
         </section>
     </main>
-    <footer class="page-footer">MOVIMENTO RPG <span>•</span> Original em C# convertido para Blazor WebAssembly</footer>
+    <footer class="page-footer">MOVIMENTO RPG <span>•</span> Jogo de fã · Blazor WebAssembly · Não oficial</footer>
 </div>
 
 @code {
@@ -110,8 +115,8 @@
     {
         2 => "Movimente o personagem",
         3 => "Dois jogadores no mesmo teclado",
-        4 => "Quatro personagens elementais",
-        _ => "Oito personagens e técnicas especiais"
+        4 => "Batalha com poderes",
+        _ => "Oito lutadores com golpes únicos"
     };
 
     private string ModeClass(int value) => _mode == value ? "mode-tab active" : "mode-tab";

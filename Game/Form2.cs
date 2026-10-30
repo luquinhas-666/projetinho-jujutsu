@@ -126,35 +126,18 @@ namespace movimento
 
             Graphics g = e.Graphics;
 
-            // Fundo verde
-            g.Clear(Color.FromArgb(95, 155, 85));
-
-            // Grade do cenário
-            using (Pen caneta = new Pen(
-                Color.FromArgb(80, 130, 70)))
-            {
-                for (int i = 0; i < ClientSize.Width; i += 32)
-                {
-                    g.DrawLine(
-                        caneta, i, 0, i, ClientSize.Height);
-                }
-
-                for (int i = 0; i < ClientSize.Height; i += 32)
-                {
-                    g.DrawLine(
-                        caneta, 0, i, ClientSize.Width, i);
-                }
-            }
+            // Arena com novo tema visual
+            ArenaVisual.Desenhar(g, ClientSize.Width, ClientSize.Height, "EXPLORAÇÃO LIVRE");
 
             DesenharPersonagem(g);
 
             using (Font fonte = new Font("Arial", 11))
             {
                 g.DrawString(
-                    "",
+                    "EXPLORAÇÃO LIVRE   ·   WASD OU SETAS PARA MOVER",
                     fonte,
                     Brushes.White,
-                    10, 10);
+                    23, 30);
             }
         }
 

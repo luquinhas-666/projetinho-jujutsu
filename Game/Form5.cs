@@ -16,7 +16,7 @@ namespace movimento
 
         private enum TipoPersonagem
         {
-            Gelo, Fogo, Natureza, Ninja, NaoyaZenin, GojoSatoru, RyomenSukuna,
+            ItadoriYuji, YutaOkkotsu, Choso, TojiFushiguro, NaoyaZenin, GojoSatoru, RyomenSukuna,
             MegumiFushiguro
         }
 
@@ -50,13 +50,13 @@ namespace movimento
 
         // A batalha só começa depois que os dois jogadores confirmarem.
         private bool telaSelecao = true;
-        private int escolha1 = (int)TipoPersonagem.Fogo;
-        private int escolha2 = (int)TipoPersonagem.Gelo;
+        private int escolha1 = (int)TipoPersonagem.YutaOkkotsu;
+        private int escolha2 = (int)TipoPersonagem.ItadoriYuji;
         private bool confirmado1 = false;
         private bool confirmado2 = false;
 
-        private TipoPersonagem personagem1 = TipoPersonagem.Fogo;
-        private TipoPersonagem personagem2 = TipoPersonagem.Gelo;
+        private TipoPersonagem personagem1 = TipoPersonagem.YutaOkkotsu;
+        private TipoPersonagem personagem2 = TipoPersonagem.ItadoriYuji;
 
         private float x = 100, y = 150;
         private float x2 = 300, y2 = 150;
@@ -75,6 +75,30 @@ namespace movimento
         private int congelado1 = 0, congelado2 = 0;
         private int cooldownPoder1 = 0, cooldownPoder2 = 0;
         private int dashVisual1 = 0, dashVisual2 = 0;
+
+        // Efeitos desenhados no Canvas e uma segunda batida para o punho divergente.
+        private sealed class EfeitoGolpe
+        {
+            public TipoPersonagem Tipo;
+            public float OrigemX, OrigemY, AlvoX, AlvoY;
+            public int Direcao, Idade, Duracao = 17;
+            public bool Acertou;
+        }
+        private readonly List<EfeitoGolpe> efeitosGolpe = new List<EfeitoGolpe>();
+        private int ecoItadori1, ecoItadori2;
+        private int tremorQuadros;
+        private int tempoArena;
+
+        // Cutscene unificada para os quatro novos feiticeiros.
+        // Etapas: preparação, técnica especial e impacto final.
+        private bool cutsceneQuartetoAtiva = false;
+        private int quartetoJogador = 0, quartetoEtapa = 0, quartetoQuadro = 0;
+        private TipoPersonagem quartetoTipo = TipoPersonagem.ItadoriYuji;
+        private float quartetoInicioX, quartetoInicioY, quartetoAlvoX, quartetoAlvoY;
+        private bool quartetoAcertou = false, quartetoImpactoAplicado = false;
+        private const int QuadrosPreparacaoQuarteto = 14;
+        private const int QuadrosGolpeQuarteto = 18;
+        private const int QuadrosFinalQuarteto = 16;
 
         // Estado da cutscene da Técnica de Projeção do Naoya.
         // Etapas: 0 = preparação, 1 = avanço rápido, 2 = impacto/saída.
@@ -126,7 +150,7 @@ namespace movimento
             "Tigre Funeral", "Mahoraga"
         };
 
-        private bool ataqueFogo1 = false, ataqueFogo2 = false;
+        private bool ataqueYuta1 = false, ataqueYuta2 = false;
 
         private bool combateTerminado = false;
         private string vencedor = "";
@@ -198,7 +222,7 @@ namespace movimento
             }
 
             // Durante a cutscene, os controles ficam pausados para destacar a técnica.
-            if (cutsceneNaoyaAtiva || cutsceneGojoAtiva || cutsceneSukunaAtiva || cutsceneMegumiAtiva)
+            if (cutsceneQuartetoAtiva || cutsceneNaoyaAtiva || cutsceneGojoAtiva || cutsceneSukunaAtiva || cutsceneMegumiAtiva)
             {
                 Invalidate();
                 return;
@@ -220,77 +244,132 @@ namespace movimento
 
         private void Atacar(int jogador)
         {
-            if (combateTerminado) return;
-            if (jogador == 1 && cooldown1 > 0) return;
-            if (jogador == 2 && cooldown2 > 0) return;
+            if (combateTerminado || telaSelecao ||
+                cutsceneQuartetoAtiva || cutsceneNaoyaAtiva || cutsceneGojoAtiva ||
+                cutsceneSukunaAtiva || cutsceneMegumiAtiva) return;
+            if ((jogador == 1 ? cooldown1 : cooldown2) > 0) return;
 
+            TipoPersonagem tipo = jogador == 1 ? personagem1 : personagem2;
+            int direcao = jogador == 1 ? direcao1 : direcao2;
             float ax = jogador == 1 ? x : x2;
             float ay = jogador == 1 ? y : y2;
-            int dir = jogador == 1 ? direcao1 : direcao2;
 
-            // Se a sombra inimiga estiver entre os lutadores e dentro do alcance,
-            // o ataque pode acertá-la. Assim, ela também possui vida e pode ser derrotada.
-            SombraInvocada alvoSombra = jogador == 1 ? sombraJogador2 : sombraJogador1;
-            if (alvoSombra != null && alvoSombra.Ativa)
+            // Cada golpe básico tem identidade própria, além do poder (Q/Shift).
+            int dano = 10, recarga = 15, atordoamento = 0, repulsao = 0;
+            float alcance = 65f;
+            switch (tipo)
             {
-                float sx = alvoSombra.X + 16f;
-                float sy = alvoSombra.Y + 22f;
-                float sdx = sx - (ax + 16f);
-                float sdy = sy - (ay + 22f);
-                double distanciaSombra = Math.Sqrt(sdx * sdx + sdy * sdy);
+                case TipoPersonagem.ItadoriYuji:   // Punho Divergente: eco posterior ao impacto
+                    dano = 9; alcance = 69f; recarga = 17; break;
+                case TipoPersonagem.YutaOkkotsu:   // Katana: alcance maior e bônus de Rika
+                    dano = 12; alcance = 96f; recarga = 19; break;
+                case TipoPersonagem.Choso:         // Disparo sanguíneo: distância longa
+                    dano = 8; alcance = 260f; recarga = 24; break;
+                case TipoPersonagem.TojiFushiguro: // Investida curta com a lança
+                    dano = 14; alcance = 93f; recarga = 23; break;
+                case TipoPersonagem.NaoyaZenin:    // Golpe veloz que interrompe movimento
+                    dano = 7; alcance = 70f; recarga = 10; atordoamento = 5; break;
+                case TipoPersonagem.GojoSatoru:    // Pulso azul repele o adversário
+                    dano = 8; alcance = 90f; recarga = 19; repulsao = 29; break;
+                case TipoPersonagem.RyomenSukuna:  // Corte com alcance ampliado
+                    dano = 13; alcance = 115f; recarga = 21; break;
+                case TipoPersonagem.MegumiFushiguro: // Garras sombrias + apoio do shikigami
+                    dano = 9; alcance = 103f; recarga = 18; atordoamento = 7; break;
+            }
 
-                if (distanciaSombra <= Alcance && EstaNaFrente(dir, sdx, sdy))
+            // Toji avança na direção do golpe antes de verificar o alcance.
+            if (tipo == TipoPersonagem.TojiFushiguro)
+            {
+                float passoX = direcao == 2 ? 25f : direcao == 1 ? -25f : 0f;
+                float passoY = direcao == 0 ? 25f : direcao == 3 ? -25f : 0f;
+                if (jogador == 1) { x += passoX; y += passoY; }
+                else { x2 += passoX; y2 += passoY; }
+                LimitarPosicoes();
+                ax = jogador == 1 ? x : x2;
+                ay = jogador == 1 ? y : y2;
+            }
+
+            bool rika = jogador == 1 ? ataqueYuta1 : ataqueYuta2;
+            if (tipo == TipoPersonagem.YutaOkkotsu && rika)
+                dano += 12;
+
+            if (tipo == TipoPersonagem.MegumiFushiguro)
+            {
+                SombraInvocada aliada = jogador == 1 ? sombraJogador1 : sombraJogador2;
+                if (aliada != null && aliada.Ativa) dano += 5;
+            }
+
+            if (jogador == 1) { cooldown1 = recarga; ataque1 = 10; ataqueYuta1 = false; }
+            else { cooldown2 = recarga; ataque2 = 10; ataqueYuta2 = false; }
+
+            float cx = ax + 16f, cy = ay + 22f;
+            float tx = jogador == 1 ? x2 + 16f : x + 16f;
+            float ty = jogador == 1 ? y2 + 22f : y + 22f;
+            bool acertou = false;
+            float impactoX = cx + (direcao == 2 ? alcance : direcao == 1 ? -alcance : 0f);
+            float impactoY = cy + (direcao == 0 ? alcance : direcao == 3 ? -alcance : 0f);
+
+            // Sombras adversárias interceptam os golpes, inclusive os disparos.
+            SombraInvocada sombra = jogador == 1 ? sombraJogador2 : sombraJogador1;
+            if (sombra != null && sombra.Ativa)
+            {
+                float sx = sombra.X + 16f, sy = sombra.Y + 22f;
+                float dxs = sx - cx, dys = sy - cy;
+                if (Math.Sqrt(dxs * dxs + dys * dys) <= alcance &&
+                    EstaNaFrente(direcao, dxs, dys))
                 {
-                    int danoSombra = jogador == 1 && ataqueFogo1 ? 25 :
-                                     jogador == 2 && ataqueFogo2 ? 25 : Dano;
-                    alvoSombra.Vida = Math.Max(0, alvoSombra.Vida - danoSombra);
-                    alvoSombra.QuadrosAtaque = Math.Max(alvoSombra.QuadrosAtaque, 3);
-                    if (alvoSombra.Vida <= 0)
-                        alvoSombra.Ativa = false;
-
-                    if (jogador == 1)
-                    {
-                        ataqueFogo1 = false;
-                        cooldown1 = 15;
-                        ataque1 = 7;
-                    }
-                    else
-                    {
-                        ataqueFogo2 = false;
-                        cooldown2 = 15;
-                        ataque2 = 7;
-                    }
-
-                    Invalidate();
-                    return;
+                    sombra.Vida = Math.Max(0, sombra.Vida - dano);
+                    sombra.QuadrosAtaque = 8;
+                    if (sombra.Vida <= 0) sombra.Ativa = false;
+                    acertou = true;
+                    impactoX = sx; impactoY = sy;
                 }
             }
 
-            float tx = jogador == 1 ? x2 : x;
-            float ty = jogador == 1 ? y2 : y;
-            float dx = (tx + 16f) - (ax + 16f);
-            float dy = (ty + 22f) - (ay + 22f);
-
-            if (Math.Sqrt(dx * dx + dy * dy) > Alcance)
-                return;
-            if (!EstaNaFrente(dir, dx, dy)) return;
-
-            if (jogador == 1)
+            if (!acertou)
             {
-                vida2 = Math.Max(0, vida2 - (ataqueFogo1 ? 25 : Dano));
-                ataqueFogo1 = false;
-                cooldown1 = 15;
-                ataque1 = 7;
-            }
-            else
-            {
-                vida1 = Math.Max(0, vida1 - (ataqueFogo2 ? 25 : Dano));
-                ataqueFogo2 = false;
-                cooldown2 = 15;
-                ataque2 = 7;
+                float dx = tx - cx, dy = ty - cy;
+                if (Math.Sqrt(dx * dx + dy * dy) <= alcance &&
+                    EstaNaFrente(direcao, dx, dy))
+                {
+                    if (jogador == 1)
+                    {
+                        vida2 = Math.Max(0, vida2 - dano);
+                        congelado2 = Math.Max(congelado2, atordoamento);
+                        if (repulsao > 0)
+                        {
+                            x2 += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
+                            y2 += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
+                        }
+                        if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori1 = 7;
+                    }
+                    else
+                    {
+                        vida1 = Math.Max(0, vida1 - dano);
+                        congelado1 = Math.Max(congelado1, atordoamento);
+                        if (repulsao > 0)
+                        {
+                            x += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
+                            y += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
+                        }
+                        if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori2 = 7;
+                    }
+                    LimitarPosicoes();
+                    acertou = true;
+                    impactoX = tx; impactoY = ty;
+                    tremorQuadros = Math.Max(tremorQuadros, tipo == TipoPersonagem.TojiFushiguro ? 6 : 4);
+                    VerificarVencedor();
+                }
             }
 
-            VerificarVencedor();
+            efeitosGolpe.Add(new EfeitoGolpe
+            {
+                Tipo = tipo, OrigemX = cx, OrigemY = cy,
+                AlvoX = impactoX, AlvoY = impactoY,
+                Direcao = direcao, Acertou = acertou
+            });
+            // Limite defensivo para partidas longas.
+            if (efeitosGolpe.Count > 24) efeitosGolpe.RemoveAt(0);
             Invalidate();
         }
 
@@ -330,35 +409,11 @@ namespace movimento
 
             switch (tipo)
             {
-                case TipoPersonagem.Gelo:
-                    if (jogador == 1) congelado2 = 67;
-                    else congelado1 = 67;
-                    break;
-
-                case TipoPersonagem.Fogo:
-                    if (jogador == 1) ataqueFogo1 = true;
-                    else ataqueFogo2 = true;
-                    break;
-
-                case TipoPersonagem.Natureza:
-                    if (jogador == 1) vida1 = Math.Min(100, vida1 + 30);
-                    else vida2 = Math.Min(100, vida2 + 30);
-                    break;
-
-                case TipoPersonagem.Ninja:
-                    if (jogador == 1)
-                    {
-                        x = x2 > x ? x2 - 45 : x2 + 35;
-                        y = y2;
-                        direcao1 = x2 > x ? 2 : 1;
-                    }
-                    else
-                    {
-                        x2 = x > x2 ? x - 45 : x + 35;
-                        y2 = y;
-                        direcao2 = x > x2 ? 2 : 1;
-                    }
-                    LimitarPosicoes();
+                case TipoPersonagem.ItadoriYuji:
+                case TipoPersonagem.YutaOkkotsu:
+                case TipoPersonagem.Choso:
+                case TipoPersonagem.TojiFushiguro:
+                    UsarTecnicaQuarteto(jogador, tipo);
                     break;
 
                 case TipoPersonagem.NaoyaZenin:
@@ -386,6 +441,166 @@ namespace movimento
                 cooldownPoder2 = ObterCooldownPoder(personagem2);
 
             Invalidate();
+        }
+
+        // Os quatro personagens possuem técnicas próprias com duração, alcance,
+        // impacto, visual e cooldown, sem depender de bibliotecas Windows.
+        private void UsarTecnicaQuarteto(int jogador, TipoPersonagem tipo)
+        {
+            cutsceneQuartetoAtiva = true;
+            quartetoJogador = jogador;
+            quartetoTipo = tipo;
+            quartetoEtapa = 0;
+            quartetoQuadro = 0;
+            quartetoImpactoAplicado = false;
+            quartetoInicioX = jogador == 1 ? x : x2;
+            quartetoInicioY = jogador == 1 ? y : y2;
+            quartetoAlvoX = jogador == 1 ? x2 : x;
+            quartetoAlvoY = jogador == 1 ? y2 : y;
+
+            float dx = quartetoAlvoX - quartetoInicioX;
+            float dy = quartetoAlvoY - quartetoInicioY;
+            float distancia = (float)Math.Sqrt(dx * dx + dy * dy);
+
+            float alcance = tipo switch
+            {
+                TipoPersonagem.ItadoriYuji => 200f,  // Black Flash
+                TipoPersonagem.YutaOkkotsu => 365f,  // Rika e energia amaldiçoada
+                TipoPersonagem.Choso => 480f,  // Sangue Perfurante: projétil de longo alcance
+                TipoPersonagem.TojiFushiguro => 275f, // Investida com a Lança Invertida do Céu
+                _ => 0f
+            };
+            quartetoAcertou = distancia <= alcance;
+
+            if (distancia > 0.01f)
+                AtualizarDirecao((int)Math.Round(dx), (int)Math.Round(dy), jogador);
+        }
+
+        private void AtualizarCutsceneQuarteto()
+        {
+            quartetoQuadro++;
+            if (quartetoEtapa == 0)
+            {
+                if (quartetoQuadro >= QuadrosPreparacaoQuarteto)
+                {
+                    quartetoEtapa = 1;
+                    quartetoQuadro = 0;
+                }
+                return;
+            }
+
+            if (quartetoEtapa == 1)
+            {
+                if (quartetoQuadro >= QuadrosGolpeQuarteto)
+                {
+                    if (!quartetoImpactoAplicado)
+                    {
+                        AplicarTecnicaQuarteto();
+                        quartetoImpactoAplicado = true;
+                    }
+                    quartetoEtapa = 2;
+                    quartetoQuadro = 0;
+                }
+                return;
+            }
+
+            if (quartetoQuadro >= QuadrosFinalQuarteto)
+            {
+                cutsceneQuartetoAtiva = false;
+                quartetoEtapa = 0;
+                quartetoQuadro = 0;
+                LimitarPosicoes();
+            }
+        }
+
+        private void AplicarTecnicaQuarteto()
+        {
+            if (!quartetoAcertou)
+                return;
+
+            int dano = 0;
+            int atordoamento = 0;
+            switch (quartetoTipo)
+            {
+                case TipoPersonagem.ItadoriYuji:
+                    dano = 25;
+                    atordoamento = 14;
+                    break;
+
+                case TipoPersonagem.YutaOkkotsu:
+                    dano = 19;
+                    atordoamento = 8;
+                    // Rika fortalece o próximo golpe físico de Yuta.
+                    if (quartetoJogador == 1)
+                    {
+                        vida1 = Math.Min(100, vida1 + 8);
+                        ataqueYuta1 = true;
+                    }
+                    else
+                    {
+                        vida2 = Math.Min(100, vida2 + 8);
+                        ataqueYuta2 = true;
+                    }
+                    break;
+
+                case TipoPersonagem.Choso:
+                    dano = 23;
+                    atordoamento = 18;
+                    break;
+
+                case TipoPersonagem.TojiFushiguro:
+                    dano = 29;
+                    atordoamento = 10;
+                    break;
+            }
+
+            // Itadori avança no Black Flash; Toji se aproxima para atacar com a lança.
+            if (quartetoTipo == TipoPersonagem.ItadoriYuji ||
+                quartetoTipo == TipoPersonagem.TojiFushiguro)
+            {
+                float alvoX = quartetoJogador == 1 ? x2 : x;
+                float alvoY = quartetoJogador == 1 ? y2 : y;
+                float origemX = quartetoJogador == 1 ? x : x2;
+                float lado = origemX <= alvoX ? -1f : 1f;
+                float novaX = alvoX + lado * 45f;
+                if (quartetoJogador == 1)
+                {
+                    x = novaX;
+                    y = alvoY;
+                    direcao1 = lado < 0 ? 2 : 1;
+                    ataque1 = 10;
+                }
+                else
+                {
+                    x2 = novaX;
+                    y2 = alvoY;
+                    direcao2 = lado < 0 ? 2 : 1;
+                    ataque2 = 10;
+                }
+            }
+            else if (quartetoJogador == 1)
+            {
+                ataque1 = 10;
+            }
+            else
+            {
+                ataque2 = 10;
+            }
+
+            if (quartetoJogador == 1)
+            {
+                vida2 = Math.Max(0, vida2 - dano);
+                congelado2 = Math.Max(congelado2, atordoamento);
+            }
+            else
+            {
+                vida1 = Math.Max(0, vida1 - dano);
+                congelado1 = Math.Max(congelado1, atordoamento);
+            }
+
+            LimitarPosicoes();
+            tremorQuadros = Math.Max(tremorQuadros, 10);
+            VerificarVencedor();
         }
 
         // Inicia uma sequência cinematográfica para a Técnica de Projeção.
@@ -902,10 +1117,10 @@ namespace movimento
         {
             switch (tipo)
             {
-                case TipoPersonagem.Gelo: return 150;       // 4,5 segundos
-                case TipoPersonagem.Fogo: return 100;       // 3 segundos
-                case TipoPersonagem.Natureza: return 200;   // 6 segundos
-                case TipoPersonagem.Ninja: return 133;      // 4 segundos
+                case TipoPersonagem.ItadoriYuji: return 175; // 5,25 segundos
+                case TipoPersonagem.YutaOkkotsu: return 220; // 6,6 segundos
+                case TipoPersonagem.Choso: return 190; // 5,7 segundos
+                case TipoPersonagem.TojiFushiguro: return 185; // 5,55 segundos
                 case TipoPersonagem.NaoyaZenin: return 180; // 5,4 segundos
                 case TipoPersonagem.GojoSatoru: return 230; // 6,9 segundos
                 case TipoPersonagem.RyomenSukuna: return 210; // 6,3 segundos
@@ -922,6 +1137,29 @@ namespace movimento
                 return;
             }
 
+            tempoArena++;
+            if (tremorQuadros > 0) tremorQuadros--;
+            for (int i = efeitosGolpe.Count - 1; i >= 0; i--)
+            {
+                efeitosGolpe[i].Idade++;
+                if (efeitosGolpe[i].Idade >= efeitosGolpe[i].Duracao)
+                    efeitosGolpe.RemoveAt(i);
+            }
+
+            // O segundo impacto de Itadori acontece alguns quadros após o primeiro.
+            if (ecoItadori1 > 0 && --ecoItadori1 == 0 && !combateTerminado)
+            {
+                vida2 = Math.Max(0, vida2 - 5);
+                tremorQuadros = Math.Max(tremorQuadros, 5);
+                VerificarVencedor();
+            }
+            if (ecoItadori2 > 0 && --ecoItadori2 == 0 && !combateTerminado)
+            {
+                vida1 = Math.Max(0, vida1 - 5);
+                tremorQuadros = Math.Max(tremorQuadros, 5);
+                VerificarVencedor();
+            }
+
             if (cooldown1 > 0) cooldown1--;
             if (cooldown2 > 0) cooldown2--;
             if (ataque1 > 0) ataque1--;
@@ -932,6 +1170,13 @@ namespace movimento
             if (congelado2 > 0) congelado2--;
             if (dashVisual1 > 0) dashVisual1--;
             if (dashVisual2 > 0) dashVisual2--;
+
+            if (cutsceneQuartetoAtiva)
+            {
+                AtualizarCutsceneQuarteto();
+                Invalidate();
+                return;
+            }
 
             if (cutsceneNaoyaAtiva)
             {
@@ -1063,86 +1308,440 @@ namespace movimento
 
             if (telaSelecao)
             {
-                // A tela de seleção usa um layout-base e escala de forma proporcional
-                // quando o tamanho da janela muda (inclusive em 2560 x 1440).
                 GraphicsState estado = g.Save();
-                float escala = Math.Min(
-                    (float)ClientSize.Width / LarguraBase,
+                float escala = Math.Min((float)ClientSize.Width / LarguraBase,
                     (float)ClientSize.Height / AlturaBase);
-                float deslocamentoX = (ClientSize.Width - LarguraBase * escala) / 2f;
-                float deslocamentoY = (ClientSize.Height - AlturaBase * escala) / 2f;
-                g.TranslateTransform(deslocamentoX, deslocamentoY);
+                g.TranslateTransform((ClientSize.Width - LarguraBase * escala) / 2f,
+                    (ClientSize.Height - AlturaBase * escala) / 2f);
                 g.ScaleTransform(escala, escala);
                 DesenharTelaSelecao(g);
                 g.Restore(estado);
                 return;
             }
 
-            g.SmoothingMode = SmoothingMode.None;
-            g.Clear(Color.FromArgb(95, 155, 85));
-
-            GraphicsState estadoMundo = g.Save();
+            GraphicsState mundo = g.Save();
+            if (tremorQuadros > 0)
+            {
+                float intensidade = tremorQuadros * 0.45f;
+                g.TranslateTransform((float)Math.Sin(tempoArena * 2.6f) * intensidade,
+                    (float)Math.Cos(tempoArena * 3.1f) * intensidade);
+            }
             if (cutsceneNaoyaAtiva && cutsceneNaoyaEtapa == 2)
             {
                 float intensidade = naoyaAcertou && cutsceneNaoyaQuadro < 8 ? 6f : 2f;
-                float tremorX = (float)Math.Sin(cutsceneNaoyaQuadro * 2.7) * intensidade;
-                float tremorY = (float)Math.Cos(cutsceneNaoyaQuadro * 3.1) * intensidade * 0.6f;
-                g.TranslateTransform(tremorX, tremorY);
+                g.TranslateTransform((float)Math.Sin(cutsceneNaoyaQuadro * 2.7) * intensidade,
+                    (float)Math.Cos(cutsceneNaoyaQuadro * 3.1) * intensidade * 0.6f);
             }
 
-            using (Pen grade = new Pen(Color.FromArgb(80, 130, 70)))
-            {
-                for (int i = 0; i < ClientSize.Width; i += 32)
-                    g.DrawLine(grade, i, 0, i, ClientSize.Height);
+            DesenharArena(g);
+            g.SmoothingMode = SmoothingMode.None;
 
-                for (int i = 0; i < ClientSize.Height; i += 32)
-                    g.DrawLine(grade, 0, i, ClientSize.Width, i);
-            }
-
-            DesenharBarraVida(g, 20, 20, vida1, Color.DodgerBlue,
-                "JOGADOR 1 - " + personagem1);
-
-            DesenharBarraVida(g, ClientSize.Width - 240, 20, vida2,
-                Color.Crimson, "JOGADOR 2 - " + personagem2);
-
+            // Personagens e unidades independentes ficam acima do piso.
             DesenharPersonagem(g, x, y, personagem1,
-                andando, quadroAnimacao, direcao1, ataque1, congelado1, ataqueFogo1, dashVisual1);
-
+                andando, quadroAnimacao, direcao1, ataque1, congelado1, ataqueYuta1, dashVisual1);
             DesenharPersonagem(g, x2, y2, personagem2,
-                andando2, quadroAnimacao2, direcao2, ataque2, congelado2, ataqueFogo2, dashVisual2);
-
-            // Os shikigami permanecem no campo de batalha e são desenhados como unidades próprias.
+                andando2, quadroAnimacao2, direcao2, ataque2, congelado2, ataqueYuta2, dashVisual2);
             DesenharSombraInvocada(g, sombraJogador1);
             DesenharSombraInvocada(g, sombraJogador2);
 
-            using (Font f = new Font("Arial", 10, FontStyle.Bold))
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            DesenharEfeitosGolpe(g);
+            g.Restore(mundo);
+
+            DesenharHudCombate(g, 16, 14, 1, personagem1, vida1, cooldownPoder1);
+            DesenharHudCombate(g, ClientSize.Width - 306, 14, 2,
+                personagem2, vida2, cooldownPoder2);
+
+            using (Font titulo = new Font("Segoe UI", 13f, FontStyle.Bold))
+            using (Font micro = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            using (StringFormat centro = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            using (Brush branco = new SolidBrush(Color.FromArgb(230, 235, 244, 255)))
+            using (Brush opaco = new SolidBrush(Color.FromArgb(170, 171, 188, 212)))
             {
-                g.DrawString("WASD: mover | F: atacar | Q: poder",
-                    f, Brushes.White, 20, 75);
-
-                g.DrawString("Setas: mover | Enter: atacar | Shift: poder",
-                    f, Brushes.White, ClientSize.Width - 350, 75);
-
-                g.DrawString("Poder: " + (cooldownPoder1 == 0 ? "pronto" : "recarregando"),
-                    f, Brushes.White, 20, 95);
-
-                g.DrawString("Poder: " + (cooldownPoder2 == 0 ? "pronto" : "recarregando"),
-                    f, Brushes.White, ClientSize.Width - 240, 95);
+                g.DrawString("VS", titulo, branco,
+                    new RectangleF(ClientSize.Width / 2f - 23, 22, 46, 34), centro);
+                g.DrawString("JUJUTSU · ARENA 01", micro, opaco,
+                    new RectangleF(ClientSize.Width / 2f - 92, 56, 184, 21), centro);
             }
 
-            if (combateTerminado)
-                DesenharTelaVitoria(g);
+            using (Brush fundo = new SolidBrush(Color.FromArgb(212, 10, 16, 30)))
+            using (Pen borda = new Pen(Color.FromArgb(110, 87, 116, 154), 1f))
+            {
+                g.FillRectangle(fundo, 14, ClientSize.Height - 45, 310, 29);
+                g.FillRectangle(fundo, ClientSize.Width - 339, ClientSize.Height - 45, 325, 29);
+                g.DrawRectangle(borda, 14, ClientSize.Height - 45, 310, 29);
+                g.DrawRectangle(borda, ClientSize.Width - 339, ClientSize.Height - 45, 325, 29);
+            }
+            using (Font comandos = new Font("Segoe UI", 9f, FontStyle.Bold))
+            {
+                g.DrawString("P1   WASD · MOVER     F · GOLPE     Q · ESPECIAL",
+                    comandos, Brushes.White, 22, ClientSize.Height - 40);
+                g.DrawString("P2   SETAS · MOVER    ENTER · GOLPE    SHIFT · ESPECIAL",
+                    comandos, Brushes.White, ClientSize.Width - 331, ClientSize.Height - 40);
+            }
 
-            g.Restore(estadoMundo);
+            if (combateTerminado) DesenharTelaVitoria(g);
+            if (cutsceneQuartetoAtiva) DesenharCutsceneQuarteto(g);
+            if (cutsceneNaoyaAtiva) DesenharCutsceneNaoya(g);
+            if (cutsceneGojoAtiva) DesenharCutsceneGojo(g);
+            if (cutsceneSukunaAtiva) DesenharCutsceneSukuna(g);
+            if (cutsceneMegumiAtiva) DesenharCutsceneMegumi(g);
+        }
 
-            if (cutsceneNaoyaAtiva)
-                DesenharCutsceneNaoya(g);
-            if (cutsceneGojoAtiva)
-                DesenharCutsceneGojo(g);
-            if (cutsceneSukunaAtiva)
-                DesenharCutsceneSukuna(g);
-            if (cutsceneMegumiAtiva)
-                DesenharCutsceneMegumi(g);
+        private void DesenharArena(Graphics g)
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            g.Clear(Color.FromArgb(12, 20, 34));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // Chão de pedra escura com faixas luminosas e recortes metálicos.
+            using (Brush centro = new SolidBrush(Color.FromArgb(19, 32, 50)))
+                g.FillRectangle(centro, 18, 105, w - 36, h - 157);
+
+            using (Pen grade = new Pen(Color.FromArgb(48, 80, 113, 144), 1f))
+            using (Pen inter = new Pen(Color.FromArgb(24, 128, 154, 181), 1f))
+            {
+                for (int xx = 18; xx < w; xx += 64)
+                {
+                    g.DrawLine(grade, xx, 108, xx, h - 52);
+                    g.DrawLine(inter, xx + 5, 108, xx + 5, h - 52);
+                }
+                for (int yy = 108; yy < h - 52; yy += 64)
+                {
+                    g.DrawLine(grade, 18, yy, w - 18, yy);
+                    g.DrawLine(inter, 18, yy + 5, w - 18, yy + 5);
+                }
+            }
+
+            // Símbolo central do duelo, círculos e linhas de energia.
+            float cx = w * 0.5f, cy = h * 0.54f;
+            using (Pen externo = new Pen(Color.FromArgb(82, 90, 170, 192), 3f))
+            using (Pen interno = new Pen(Color.FromArgb(70, 185, 107, 167), 2f))
+            using (Pen divisao = new Pen(Color.FromArgb(60, 105, 140, 191), 1.5f))
+            {
+                g.DrawEllipse(externo, cx - 162, cy - 162, 324, 324);
+                g.DrawEllipse(interno, cx - 112, cy - 112, 224, 224);
+                g.DrawEllipse(divisao, cx - 58, cy - 58, 116, 116);
+                g.DrawLine(divisao, cx - 185, cy, cx + 185, cy);
+                g.DrawLine(divisao, cx, cy - 185, cx, cy + 185);
+                for (int i = 0; i < 8; i++)
+                {
+                    double a = i * Math.PI / 4 + tempoArena * 0.0025;
+                    float ux = (float)Math.Cos(a), uy = (float)Math.Sin(a);
+                    g.DrawLine(interno, cx + ux * 130, cy + uy * 130,
+                        cx + ux * 152, cy + uy * 152);
+                }
+            }
+            using (Brush nucleo = new SolidBrush(Color.FromArgb(42, 170, 213, 228)))
+                g.FillEllipse(nucleo, cx - 14, cy - 14, 28, 28);
+
+            // Partículas ambiente determinísticas, sem alocação aleatória a cada quadro.
+            for (int i = 0; i < 29; i++)
+            {
+                float px = 26 + ((i * 163 + 29) % Math.Max(1, w - 52));
+                float py = 128 + ((i * 113 + 57) % Math.Max(1, h - 213));
+                float oscilacao = (float)Math.Sin(tempoArena * 0.045 + i * 1.7) * 5f;
+                using (Brush brilho = new SolidBrush(Color.FromArgb(35 + i % 4 * 17, 145, 219, 242)))
+                    g.FillEllipse(brilho, px, py + oscilacao, 2f + i % 3, 2f + i % 3);
+            }
+
+            using (Brush topo = new SolidBrush(Color.FromArgb(235, 7, 12, 24)))
+            using (Brush rodape = new SolidBrush(Color.FromArgb(233, 8, 14, 26)))
+            {
+                g.FillRectangle(topo, 0, 0, w, 104);
+                g.FillRectangle(rodape, 0, h - 57, w, 57);
+            }
+            using (Pen moldura = new Pen(Color.FromArgb(130, 70, 115, 150), 2f))
+            using (Pen detalhe = new Pen(Color.FromArgb(85, 188, 113, 155), 2f))
+            {
+                g.DrawRectangle(moldura, 9, 104, w - 18, h - 160);
+                g.DrawLine(detalhe, 22, 104, 205, 104);
+                g.DrawLine(detalhe, w - 205, 104, w - 22, 104);
+                g.DrawLine(detalhe, w * .5f - 80, h - 57, w * .5f + 80, h - 57);
+            }
+        }
+
+        private void DesenharHudCombate(Graphics g, float bx, float by,
+            int jogador, TipoPersonagem tipo, int vida, int recarga)
+        {
+            const int largura = 290;
+            Color cor = CorPersonagem(tipo);
+            float progresso = Math.Max(0f, Math.Min(1f, vida / 100f));
+            float prontidao = Math.Max(0f, Math.Min(1f,
+                1f - recarga / (float)Math.Max(1, ObterCooldownPoder(tipo))));
+
+            using (Brush fundo = new SolidBrush(Color.FromArgb(247, 18, 25, 41)))
+            using (Pen borda = new Pen(Color.FromArgb(132, cor), 1.5f))
+            using (Brush linha = new SolidBrush(cor))
+            using (Brush vazio = new SolidBrush(Color.FromArgb(68, 74, 89)))
+            using (Brush poder = new SolidBrush(Color.FromArgb(165, 202, 225, 252)))
+            {
+                g.FillRectangle(fundo, bx, by, largura, 83);
+                g.DrawRectangle(borda, bx, by, largura, 83);
+                g.FillRectangle(linha, bx, by, 5, 83);
+                g.FillRectangle(vazio, bx + 14, by + 40, largura - 28, 13);
+                g.FillRectangle(linha, bx + 14, by + 40, (largura - 28) * progresso, 13);
+                g.FillRectangle(vazio, bx + 14, by + 65, largura - 28, 5);
+                g.FillRectangle(poder, bx + 14, by + 65, (largura - 28) * prontidao, 5);
+            }
+            using (Font nome = new Font("Segoe UI", 12f, FontStyle.Bold))
+            using (Font miudo = new Font("Segoe UI", 8f, FontStyle.Bold))
+            using (Brush branco = new SolidBrush(Color.FromArgb(242, 244, 251, 255)))
+            using (Brush cinza = new SolidBrush(Color.FromArgb(198, 176, 193, 212)))
+            {
+                g.DrawString("P" + jogador + "  " + NomePersonagem(tipo), nome, branco, bx + 14, by + 8);
+                g.DrawString(vida + " / 100", miudo, branco, bx + largura - 65, by + 25);
+                g.DrawString(recarga == 0 ? "ESPECIAL PRONTO" : "ENERGIA AMALDIÇOADA",
+                    miudo, cinza, bx + 14, by + 54);
+            }
+        }
+
+        private void DesenharEfeitosGolpe(Graphics g)
+        {
+            foreach (EfeitoGolpe e in efeitosGolpe)
+            {
+                float t = e.Idade / (float)Math.Max(1, e.Duracao);
+                float progresso = Math.Min(1f, t * 2.4f);
+                float ex = e.OrigemX + (e.AlvoX - e.OrigemX) * progresso;
+                float ey = e.OrigemY + (e.AlvoY - e.OrigemY) * progresso;
+                Color cor = CorPersonagem(e.Tipo);
+                int alpha = Math.Max(0, Math.Min(245, (int)(220 * (1f - t))));
+                float raio = 9f + 35f * t;
+
+                using (Pen brilho = new Pen(Color.FromArgb(alpha, cor), 4f))
+                using (Pen fino = new Pen(Color.FromArgb(alpha, 235, 244, 255), 2f))
+                {
+                    brilho.StartCap = LineCap.Round;
+                    brilho.EndCap = LineCap.Round;
+                    switch (e.Tipo)
+                    {
+                        case TipoPersonagem.ItadoriYuji:
+                            // Punho divergente: dois anéis defasados.
+                            g.DrawEllipse(brilho, ex - raio, ey - raio, 2 * raio, 2 * raio);
+                            if (t > .23f)
+                                g.DrawEllipse(fino, ex - raio * .6f, ey - raio * .6f, raio * 1.2f, raio * 1.2f);
+                            break;
+                        case TipoPersonagem.YutaOkkotsu:
+                            // Katana: corte em X envolvido por energia azul.
+                            g.DrawLine(brilho, ex - raio, ey + raio, ex + raio, ey - raio);
+                            g.DrawLine(fino, ex - raio * .7f, ey - raio * .8f,
+                                ex + raio * .65f, ey + raio * .7f);
+                            break;
+                        case TipoPersonagem.Choso:
+                            // Jato carmesim percorre o espaço até o alvo.
+                            g.DrawLine(brilho, e.OrigemX, e.OrigemY, ex, ey);
+                            g.DrawLine(fino, e.OrigemX, e.OrigemY, ex, ey);
+                            g.DrawEllipse(brilho, ex - 5, ey - 5, 10, 10);
+                            break;
+                        case TipoPersonagem.TojiFushiguro:
+                            // Lança: estocada longa com um gancho transversal.
+                            g.DrawLine(brilho, e.OrigemX, e.OrigemY, ex, ey);
+                            g.DrawLine(fino, ex - 12, ey - 13, ex + 12, ey + 13);
+                            g.DrawLine(fino, ex + 12, ey - 13, ex - 12, ey + 13);
+                            break;
+                        case TipoPersonagem.NaoyaZenin:
+                            // Técnica de projeção: três cortes instantâneos em sequência.
+                            for (int i = 0; i < 3; i++)
+                                g.DrawLine(brilho, ex - raio + i * 12, ey + 12 + i * 5,
+                                    ex + raio + i * 12, ey - 12 + i * 5);
+                            break;
+                        case TipoPersonagem.GojoSatoru:
+                            // Infinito: ondas concêntricas de repulsão.
+                            g.DrawEllipse(brilho, ex - raio * 1.4f, ey - raio * 1.4f, raio * 2.8f, raio * 2.8f);
+                            g.DrawEllipse(fino, ex - raio * .75f, ey - raio * .75f, raio * 1.5f, raio * 1.5f);
+                            break;
+                        case TipoPersonagem.RyomenSukuna:
+                            // Desmantelar: duas linhas cortantes cruzadas.
+                            g.DrawLine(brilho, ex - raio * 1.7f, ey - raio, ex + raio * 1.7f, ey + raio);
+                            g.DrawLine(fino, ex - raio * 1.3f, ey + raio, ex + raio * 1.3f, ey - raio);
+                            break;
+                        case TipoPersonagem.MegumiFushiguro:
+                            // Garras de sombra: rastros paralelos.
+                            for (int i = -1; i <= 1; i++)
+                                g.DrawLine(brilho, ex - raio + i * 9, ey - raio,
+                                    ex + raio + i * 9, ey + raio);
+                            break;
+                    }
+                }
+                if (e.Acertou && t < .55f)
+                {
+                    using (Pen impacto = new Pen(Color.FromArgb(Math.Max(0, 195 - e.Idade * 17), 255, 255, 255), 1.7f))
+                        g.DrawEllipse(impacto, e.AlvoX - raio * .75f, e.AlvoY - raio * .75f,
+                            raio * 1.5f, raio * 1.5f);
+                }
+            }
+        }
+
+        // Cinemática em Canvas para Itadori, Yuta, Choso e Toji.
+        private void DesenharCutsceneQuarteto(Graphics g)
+        {
+            Color energia = quartetoTipo switch
+            {
+                TipoPersonagem.ItadoriYuji => Color.FromArgb(245, 60, 96),
+                TipoPersonagem.YutaOkkotsu => Color.FromArgb(118, 205, 255),
+                TipoPersonagem.Choso => Color.FromArgb(224, 55, 85),
+                TipoPersonagem.TojiFushiguro => Color.FromArgb(96, 225, 161),
+                _ => Color.White
+            };
+
+            int quadro = quartetoQuadro;
+            int faixa = Math.Max(36, ClientSize.Height / 13);
+            using (Brush fundo = new SolidBrush(Color.FromArgb(126, 8, 9, 24)))
+                g.FillRectangle(fundo, ClientRectangle);
+            using (Brush barra = new SolidBrush(Color.FromArgb(232, 8, 10, 22)))
+            {
+                g.FillRectangle(barra, 0, 0, ClientSize.Width, faixa);
+                g.FillRectangle(barra, 0, ClientSize.Height - faixa, ClientSize.Width, faixa);
+            }
+
+            float sx = quartetoInicioX + 16f;
+            float sy = quartetoInicioY + 19f;
+            float tx = quartetoAlvoX + 16f;
+            float ty = quartetoAlvoY + 19f;
+
+            if (quartetoEtapa == 0)
+            {
+                // Preparação: aura pulsando ao redor do feiticeiro.
+                float raio = 22f + quadro * 3.2f;
+                using (Pen aura = new Pen(Color.FromArgb(225, energia), 4f))
+                using (Pen auraInterior = new Pen(Color.FromArgb(130, 245, 245, 255), 2f))
+                {
+                    g.DrawEllipse(aura, sx - raio, sy - raio, raio * 2f, raio * 2f);
+                    g.DrawEllipse(auraInterior, sx - raio * 0.56f, sy - raio * 0.56f,
+                        raio * 1.12f, raio * 1.12f);
+                }
+                if (quartetoTipo == TipoPersonagem.Choso)
+                {
+                    // Choso concentra o Sangue Perfurante em um único ponto.
+                    using (Pen espiral = new Pen(Color.FromArgb(225, 207, 50, 74), 3f))
+                    using (Brush nucleo = new SolidBrush(Color.FromArgb(240, 245, 145, 164)))
+                    {
+                        g.DrawEllipse(espiral, sx - 18, sy - 18, 36, 36);
+                        g.DrawEllipse(espiral, sx - 31, sy - 31, 62, 62);
+                        g.FillEllipse(nucleo, sx - 6, sy - 6, 12, 12);
+                    }
+                }
+                else if (quartetoTipo == TipoPersonagem.TojiFushiguro)
+                {
+                    // Toji se prepara para uma investida veloz com sua arma.
+                    using (Pen rastro = new Pen(Color.FromArgb(190, 95, 228, 165), 3f))
+                    {
+                        g.DrawLine(rastro, sx - 42, sy + 16, sx + 39, sy - 37);
+                        g.DrawLine(rastro, sx - 33, sy + 32, sx + 23, sy - 10);
+                    }
+                }
+            }
+            else if (quartetoEtapa == 1)
+            {
+                float t = Math.Min(1f, (float)quadro / QuadrosGolpeQuarteto);
+                float fx = sx + (tx - sx) * t;
+                float fy = sy + (ty - sy) * t;
+                float largura = quartetoTipo == TipoPersonagem.YutaOkkotsu ? 16f : 9f;
+
+                using (Pen rastro = new Pen(Color.FromArgb(135, energia), largura))
+                using (Pen centro = new Pen(Color.FromArgb(240, 246, 244, 255), 3f))
+                {
+                    rastro.StartCap = LineCap.Round;
+                    rastro.EndCap = LineCap.Round;
+                    g.DrawLine(rastro, sx, sy, fx, fy);
+                    g.DrawLine(centro, sx, sy, fx, fy);
+                }
+
+                if (quartetoTipo == TipoPersonagem.ItadoriYuji)
+                {
+                    // Duplo impacto característico do Black Flash.
+                    using (Pen relampago = new Pen(Color.FromArgb(240, 240, 49, 93), 4f))
+                    {
+                        g.DrawLine(relampago, fx - 28, fy - 35, fx + 4, fy - 12);
+                        g.DrawLine(relampago, fx + 4, fy - 12, fx - 14, fy + 22);
+                        g.DrawLine(relampago, fx - 14, fy + 22, fx + 29, fy + 5);
+                    }
+                }
+                else if (quartetoTipo == TipoPersonagem.YutaOkkotsu)
+                {
+                    // Silhueta de energia representando Rika atrás de Yuta.
+                    using (Brush rika = new SolidBrush(Color.FromArgb(100, 154, 166, 255)))
+                    using (Pen contorno = new Pen(Color.FromArgb(215, 185, 235, 255), 3f))
+                    {
+                        g.FillEllipse(rika, fx - 40, fy - 69, 80, 97);
+                        g.DrawEllipse(contorno, fx - 40, fy - 69, 80, 97);
+                        g.DrawLine(contorno, fx - 33, fy + 8, fx - 52, fy + 32);
+                        g.DrawLine(contorno, fx + 33, fy + 8, fx + 52, fy + 32);
+                    }
+                }
+                else if (quartetoTipo == TipoPersonagem.Choso)
+                {
+                    // Feixe compacto e veloz do Sangue Perfurante (efeito visual estilizado).
+                    using (Pen feixe = new Pen(Color.FromArgb(225, 178, 27, 55), 11f))
+                    using (Pen nucleo = new Pen(Color.FromArgb(255, 255, 198, 210), 3f))
+                    using (Brush ponta = new SolidBrush(Color.FromArgb(240, 244, 95, 116)))
+                    {
+                        feixe.StartCap = LineCap.Round;
+                        feixe.EndCap = LineCap.Round;
+                        g.DrawLine(feixe, sx, sy, fx, fy);
+                        g.DrawLine(nucleo, sx, sy, fx, fy);
+                        g.FillEllipse(ponta, fx - 8f, fy - 8f, 16f, 16f);
+                    }
+                    using (Pen ondas = new Pen(Color.FromArgb(165, 229, 85, 112), 2f))
+                    {
+                        g.DrawEllipse(ondas, fx - 22, fy - 22, 44, 44);
+                        g.DrawEllipse(ondas, fx - 36, fy - 36, 72, 72);
+                    }
+                }
+                else if (quartetoTipo == TipoPersonagem.TojiFushiguro)
+                {
+                    // Investida verde e cortes cruzados da Lança Invertida do Céu.
+                    using (Pen trilha = new Pen(Color.FromArgb(210, 56, 170, 132), 8f))
+                    using (Pen lamina = new Pen(Color.FromArgb(250, 206, 247, 223), 4f))
+                    {
+                        trilha.StartCap = LineCap.Round;
+                        trilha.EndCap = LineCap.Round;
+                        g.DrawLine(trilha, sx, sy, fx, fy);
+                        g.DrawLine(lamina, fx - 43, fy + 31, fx + 34, fy - 35);
+                        g.DrawLine(lamina, fx - 28, fy - 35, fx + 39, fy + 25);
+                    }
+                }
+            }
+            else
+            {
+                float raio = 25f + quadro * 12f;
+                int transparencia = Math.Max(0, 225 - quadro * 14);
+                using (Pen impacto = new Pen(Color.FromArgb(transparencia, energia), 5f))
+                using (Pen flash = new Pen(Color.FromArgb(transparencia / 2, Color.White), 2f))
+                {
+                    g.DrawEllipse(impacto, tx - raio, ty - raio * 0.7f,
+                        raio * 2f, raio * 1.4f);
+                    g.DrawEllipse(flash, tx - raio * 0.7f, ty - raio * 0.49f,
+                        raio * 1.4f, raio * 0.98f);
+                }
+            }
+
+            string titulo = quartetoTipo switch
+            {
+                TipoPersonagem.ItadoriYuji => "YUJI ITADORI",
+                TipoPersonagem.YutaOkkotsu => "YUTA OKKOTSU",
+                TipoPersonagem.Choso => "CHOSO",
+                TipoPersonagem.TojiFushiguro => "TOJI FUSHIGURO",
+                _ => "TÉCNICA AMALDIÇOADA"
+            };
+            string tecnica = quartetoTipo switch
+            {
+                TipoPersonagem.ItadoriYuji => "BLACK FLASH",
+                TipoPersonagem.YutaOkkotsu => "RIKA — CORTE AMALDIÇOADO",
+                TipoPersonagem.Choso => "SANGUE PERFURANTE",
+                TipoPersonagem.TojiFushiguro => "LANÇA INVERTIDA DO CÉU",
+                _ => "TÉCNICA ESPECIAL"
+            };
+            string subtitulo = quartetoEtapa == 0
+                ? quartetoTipo == TipoPersonagem.Choso
+                    ? "CONCENTRANDO MANIPULAÇÃO DE SANGUE"
+                    : quartetoTipo == TipoPersonagem.TojiFushiguro
+                        ? "VELOCIDADE FÍSICA E ARMA ESPECIAL"
+                        : "CONCENTRANDO ENERGIA AMALDIÇOADA"
+                : quartetoEtapa == 1 ? tecnica
+                : quartetoAcertou ? "GOLPE ESPECIAL CONCLUÍDO!" : "O ALVO ESTAVA FORA DO ALCANCE";
+            DesenharTextoCinematografico(g, quartetoEtapa == 0 ? titulo : tecnica,
+                subtitulo, energia, faixa);
         }
 
         private void DesenharCutsceneGojo(Graphics g)
@@ -1639,13 +2238,27 @@ namespace movimento
         private void DesenharTelaSelecao(Graphics g)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.FromArgb(15, 18, 32));
+            g.Clear(Color.FromArgb(9, 14, 28));
 
-            // Fundo dividido de forma simétrica para separar visualmente os jogadores.
-            using (Brush faixa1 = new SolidBrush(Color.FromArgb(35, 35, 80, 155)))
-                g.FillRectangle(faixa1, 0, 0, LarguraBase / 2, AlturaBase);
-            using (Brush faixa2 = new SolidBrush(Color.FromArgb(35, 155, 35, 60)))
-                g.FillRectangle(faixa2, LarguraBase / 2, 0, LarguraBase / 2, AlturaBase);
+            // Fundo da seleção: duas equipes com luzes opostas e um selo central.
+            using (Brush azul = new SolidBrush(Color.FromArgb(58, 31, 72, 124)))
+                g.FillRectangle(azul, 0, 0, LarguraBase / 2, AlturaBase);
+            using (Brush vinho = new SolidBrush(Color.FromArgb(55, 108, 32, 77)))
+                g.FillRectangle(vinho, LarguraBase / 2, 0, LarguraBase / 2, AlturaBase);
+            using (Pen grade = new Pen(Color.FromArgb(34, 124, 152, 193), 1f))
+            using (Pen circulo = new Pen(Color.FromArgb(87, 182, 160, 215), 2f))
+            {
+                for (int i = 0; i < LarguraBase; i += 55)
+                    g.DrawLine(grade, i, 0, i, AlturaBase);
+                for (int i = 0; i < AlturaBase; i += 55)
+                    g.DrawLine(grade, 0, i, LarguraBase, i);
+                g.DrawEllipse(circulo, 400, 200, 200, 200);
+                g.DrawEllipse(circulo, 445, 245, 110, 110);
+            }
+            using (Brush topo = new SolidBrush(Color.FromArgb(225, 7, 12, 26)))
+                g.FillRectangle(topo, 0, 0, LarguraBase, 73);
+            using (Pen linha = new Pen(Color.FromArgb(165, 151, 116, 202), 2f))
+                g.DrawLine(linha, 0, 72, LarguraBase, 72);
 
             using (Font titulo = new Font("Segoe UI", 25, FontStyle.Bold))
             using (Font subtitulo = new Font("Segoe UI", 10, FontStyle.Regular))
@@ -1653,11 +2266,11 @@ namespace movimento
             using (Brush dourado = new SolidBrush(Color.FromArgb(255, 240, 207, 112)))
             using (StringFormat centralizado = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
-                string textoTitulo = "ESCOLHA SEU PERSONAGEM";
+                string textoTitulo = "JUJUTSU ARENA  /  ESCOLHA SEU LUTADOR";
                 g.DrawString(textoTitulo, titulo, dourado,
                     new RectangleF(0, 8, LarguraBase, 38), centralizado);
 
-                string subt = "Selecione um personagem e confirme para iniciar a batalha.";
+                string subt = "8 LUTADORES  ·  GOLPES ÚNICOS  ·  2 JOGADORES LOCAIS";
                 g.DrawString(subt, subtitulo, branco,
                     new RectangleF(0, 45, LarguraBase, 24), centralizado);
             }
@@ -1696,6 +2309,12 @@ namespace movimento
                     : "A batalha começa quando os dois jogadores confirmarem.";
                 g.DrawString(aviso, rodape, Brushes.Gold,
                     new RectangleF(0, 586, LarguraBase, 22), centralizado);
+                g.DrawString("GOLPE: " + DescricaoGolpeBasico((TipoPersonagem)escolha1),
+                    rodape, Brushes.DeepSkyBlue,
+                    new RectangleF(painel1X, 615, painelLargura, 22), centralizado);
+                g.DrawString("GOLPE: " + DescricaoGolpeBasico((TipoPersonagem)escolha2),
+                    rodape, Brushes.LightCoral,
+                    new RectangleF(painel2X, 615, painelLargura, 22), centralizado);
             }
         }
 
@@ -1717,10 +2336,10 @@ namespace movimento
         {
             TipoPersonagem[] tipos = new TipoPersonagem[]
             {
-                TipoPersonagem.Gelo,
-                TipoPersonagem.Fogo,
-                TipoPersonagem.Natureza,
-                TipoPersonagem.Ninja,
+                TipoPersonagem.ItadoriYuji,
+                TipoPersonagem.YutaOkkotsu,
+                TipoPersonagem.Choso,
+                TipoPersonagem.TojiFushiguro,
                 TipoPersonagem.NaoyaZenin,
                 TipoPersonagem.GojoSatoru,
                 TipoPersonagem.RyomenSukuna,
@@ -1761,19 +2380,14 @@ namespace movimento
                         : Color.FromArgb(85, 180, 190, 210), selecionado ? 2.5f : 1f))
                         g.DrawRectangle(borda, cartao.X, cartao.Y, cartao.Width, cartao.Height);
 
-                    // Ícone centralizado em um círculo de tamanho fixo para todos os cartões.
-                    RectangleF circulo = new RectangleF(cardX + 11f, cardY + 17f, 36f, 36f);
-                    using (Brush simbolo = new SolidBrush(cor))
-                        g.FillEllipse(simbolo, circulo);
-
-                    string letra = tipos[i] == TipoPersonagem.Gelo ? "G" :
-                                   tipos[i] == TipoPersonagem.Fogo ? "F" :
-                                   tipos[i] == TipoPersonagem.Natureza ? "N" :
-                                   tipos[i] == TipoPersonagem.Ninja ? "X" :
-                                   tipos[i] == TipoPersonagem.NaoyaZenin ? "Z" :
-                                   tipos[i] == TipoPersonagem.GojoSatoru ? "∞" :
-                                   tipos[i] == TipoPersonagem.RyomenSukuna ? "S" : "M";
-                    g.DrawString(letra, inicial, Brushes.White, circulo, centralizado);
+                    // Miniatura real em pixel art, com a mesma rotina usada no combate.
+                    using (Brush placa = new SolidBrush(Color.FromArgb(135, 9, 15, 29)))
+                        g.FillRectangle(placa, cardX + 6f, cardY + 5f, 46f, 60f);
+                    GraphicsState miniatura = g.Save();
+                    g.TranslateTransform(cardX + 11f, cardY + 11f);
+                    g.ScaleTransform(1.03f, 1.03f);
+                    DesenharPersonagem(g, 0f, 0f, tipos[i], false, 0, 2, 0, 0, false, 0);
+                    g.Restore(miniatura);
 
                     float textoX = cardX + 56f;
                     float textoLargura = larguraCartao - 64f;
@@ -1793,14 +2407,30 @@ namespace movimento
             }
         }
 
+        private string DescricaoGolpeBasico(TipoPersonagem tipo)
+        {
+            switch (tipo)
+            {
+                case TipoPersonagem.ItadoriYuji: return "Punho divergente · 2 impactos";
+                case TipoPersonagem.YutaOkkotsu: return "Katana amaldiçoada · alcance médio";
+                case TipoPersonagem.Choso: return "Rajada carmesim · longo alcance";
+                case TipoPersonagem.TojiFushiguro: return "Estocada veloz · avanço curto";
+                case TipoPersonagem.NaoyaZenin: return "Impacto projetado · rápido";
+                case TipoPersonagem.GojoSatoru: return "Pulso azul · empurra o rival";
+                case TipoPersonagem.RyomenSukuna: return "Corte desmantelar · arco amplo";
+                case TipoPersonagem.MegumiFushiguro: return "Garras sombrias · apoio de sombra";
+                default: return "Ataque básico";
+            }
+        }
+
         private Color CorPersonagem(TipoPersonagem tipo)
         {
             switch (tipo)
             {
-                case TipoPersonagem.Gelo: return Color.DeepSkyBlue;
-                case TipoPersonagem.Fogo: return Color.Crimson;
-                case TipoPersonagem.Natureza: return Color.ForestGreen;
-                case TipoPersonagem.Ninja: return Color.MediumPurple;
+                case TipoPersonagem.ItadoriYuji: return Color.FromArgb(235, 97, 127);
+                case TipoPersonagem.YutaOkkotsu: return Color.FromArgb(130, 190, 255);
+                case TipoPersonagem.Choso: return Color.FromArgb(186, 55, 80);
+                case TipoPersonagem.TojiFushiguro: return Color.FromArgb(58, 160, 130);
                 case TipoPersonagem.NaoyaZenin: return Color.DarkKhaki;
                 case TipoPersonagem.GojoSatoru: return Color.DodgerBlue;
                 case TipoPersonagem.RyomenSukuna: return Color.Crimson;
@@ -1813,10 +2443,10 @@ namespace movimento
         {
             switch (tipo)
             {
-                case TipoPersonagem.Gelo: return "Gelo";
-                case TipoPersonagem.Fogo: return "Fogo";
-                case TipoPersonagem.Natureza: return "Natureza";
-                case TipoPersonagem.Ninja: return "Ninja";
+                case TipoPersonagem.ItadoriYuji: return "Yuji Itadori";
+                case TipoPersonagem.YutaOkkotsu: return "Yuta Okkotsu";
+                case TipoPersonagem.Choso: return "Choso";
+                case TipoPersonagem.TojiFushiguro: return "Toji Fushiguro";
                 case TipoPersonagem.NaoyaZenin: return "Naoya Zenin";
                 case TipoPersonagem.GojoSatoru: return "Gojo Satoru";
                 case TipoPersonagem.RyomenSukuna: return "Ryomen Sukuna";
@@ -1829,10 +2459,10 @@ namespace movimento
         {
             switch (tipo)
             {
-                case TipoPersonagem.Gelo: return "Congela o adversário";
-                case TipoPersonagem.Fogo: return "Fortalece o ataque";
-                case TipoPersonagem.Natureza: return "Recupera 30 de vida";
-                case TipoPersonagem.Ninja: return "Teleporte curto";
+                case TipoPersonagem.ItadoriYuji: return "Black Flash";
+                case TipoPersonagem.YutaOkkotsu: return "Rika e corte amaldiçoado";
+                case TipoPersonagem.Choso: return "Sangue Perfurante";
+                case TipoPersonagem.TojiFushiguro: return "Lança Invertida do Céu";
                 case TipoPersonagem.NaoyaZenin: return "Avanço veloz e atordoa";
                 case TipoPersonagem.GojoSatoru: return "Disparo Roxo";
                 case TipoPersonagem.RyomenSukuna: return "Cortes em área";
@@ -1864,7 +2494,7 @@ namespace movimento
 
         private void DesenharPersonagem(Graphics g, float px, float py,
             TipoPersonagem tipo, bool andandoLocal, int quadro,
-            int direcao, int ataque, int congelado, bool fogoAtivo, int dashVisual)
+            int direcao, int ataque, int congelado, bool energiaYutaAtiva, int dashVisual)
         {
             int passo = andandoLocal ? quadro * 3 : 0;
 
@@ -1872,22 +2502,25 @@ namespace movimento
 
             switch (tipo)
             {
-                case TipoPersonagem.Gelo:
-                    roupa = Color.DeepSkyBlue;
-                    cabelo = Color.WhiteSmoke;
+                case TipoPersonagem.ItadoriYuji:
+                    roupa = Color.FromArgb(32, 35, 58); // uniforme escuro
+                    cabelo = Color.FromArgb(236, 134, 161); // cabelo rosa
+                    pele = Color.FromArgb(242, 204, 184);
                     break;
-                case TipoPersonagem.Fogo:
-                    roupa = Color.Crimson;
-                    cabelo = Color.DarkRed;
+                case TipoPersonagem.YutaOkkotsu:
+                    roupa = Color.FromArgb(229, 232, 238); // jaqueta clara
+                    cabelo = Color.FromArgb(29, 31, 44); // cabelo preto
+                    pele = Color.FromArgb(242, 210, 195);
                     break;
-                case TipoPersonagem.Natureza:
-                    roupa = Color.ForestGreen;
-                    cabelo = Color.SaddleBrown;
+                case TipoPersonagem.Choso:
+                    roupa = Color.FromArgb(221, 216, 204); // roupa clara e gola roxa
+                    cabelo = Color.FromArgb(28, 24, 35); // cabelo escuro preso
+                    pele = Color.FromArgb(235, 202, 182);
                     break;
-                case TipoPersonagem.Ninja:
-                    roupa = Color.MediumPurple;
-                    cabelo = Color.Black;
-                    pele = Color.SandyBrown;
+                case TipoPersonagem.TojiFushiguro:
+                    roupa = Color.FromArgb(29, 51, 66); // camiseta azul-escura
+                    cabelo = Color.FromArgb(21, 25, 30); // cabelo preto espetado
+                    pele = Color.FromArgb(227, 186, 160);
                     break;
                 case TipoPersonagem.GojoSatoru:
                     roupa = Color.FromArgb(25, 29, 42);
@@ -1911,7 +2544,14 @@ namespace movimento
                     break;
             }
 
-            g.FillEllipse(Brushes.DarkGreen, px + 3, py + 35, 26, 7);
+            using (Brush sombra = new SolidBrush(Color.FromArgb(150, 2, 7, 18)))
+                g.FillEllipse(sombra, px - 2, py + 35, 38, 11);
+            if (ataque > 0 || dashVisual > 0 || energiaYutaAtiva)
+            {
+                Color auraCor = CorPersonagem(tipo);
+                using (Pen aura = new Pen(Color.FromArgb(155, auraCor), 2f))
+                    g.DrawEllipse(aura, px - 8, py - 9, 48, 57);
+            }
 
             if (tipo == TipoPersonagem.NaoyaZenin && dashVisual > 0)
             {
@@ -2007,6 +2647,51 @@ namespace movimento
                         new Point((int)px + 28, (int)py + 10)
                     });
                 }
+                else if (tipo == TipoPersonagem.ItadoriYuji)
+                {
+                    // Cabelo curto, rosa e pontudo do Itadori.
+                    g.FillPolygon(b, new PointF[] {
+                        new PointF(px + 3, py + 8), new PointF(px + 1, py - 4),
+                        new PointF(px + 9, py + 1), new PointF(px + 15, py - 7),
+                        new PointF(px + 19, py + 1), new PointF(px + 27, py - 4),
+                        new PointF(px + 31, py + 9)
+                    });
+                }
+                else if (tipo == TipoPersonagem.YutaOkkotsu)
+                {
+                    // Franja caída e cabelo preto do Yuta.
+                    g.FillPolygon(b, new PointF[] {
+                        new PointF(px + 2, py + 7), new PointF(px + 4, py - 5),
+                        new PointF(px + 22, py - 3), new PointF(px + 31, py + 5),
+                        new PointF(px + 24, py + 13), new PointF(px + 19, py + 6),
+                        new PointF(px + 12, py + 13), new PointF(px + 8, py + 6)
+                    });
+                }
+                else if (tipo == TipoPersonagem.Choso)
+                {
+                    // Cabelo repartido com duas mechas presas atrás da cabeça.
+                    g.FillPolygon(b, new PointF[] {
+                        new PointF(px + 3, py + 9), new PointF(px + 6, py - 5),
+                        new PointF(px + 16, py - 2), new PointF(px + 19, py - 6),
+                        new PointF(px + 28, py + 2), new PointF(px + 30, py + 11),
+                        new PointF(px + 23, py + 8), new PointF(px + 16, py + 3),
+                        new PointF(px + 11, py + 9)
+                    });
+                    g.FillEllipse(b, px - 2, py + 1, 9, 11);
+                    g.FillEllipse(b, px + 25, py + 1, 9, 11);
+                }
+                else if (tipo == TipoPersonagem.TojiFushiguro)
+                {
+                    // Cabelo preto curto e desalinhado do Toji.
+                    g.FillPolygon(b, new PointF[] {
+                        new PointF(px + 2, py + 10), new PointF(px + 1, py - 2),
+                        new PointF(px + 7, py + 2), new PointF(px + 11, py - 7),
+                        new PointF(px + 17, py + 1), new PointF(px + 23, py - 5),
+                        new PointF(px + 27, py + 2), new PointF(px + 32, py + 3),
+                        new PointF(px + 28, py + 12), new PointF(px + 21, py + 6),
+                        new PointF(px + 10, py + 11)
+                    });
+                }
             }
 
             using (Brush b = new SolidBrush(pele))
@@ -2047,34 +2732,176 @@ namespace movimento
                     g.DrawLine(marca, px + 13, py + 19, px + 21, py + 19);
                 }
             }
+            else if (tipo == TipoPersonagem.ItadoriYuji)
+            {
+                using (Brush cicatriz = new SolidBrush(Color.FromArgb(190, 154, 63, 83)))
+                {
+                    g.FillRectangle(cicatriz, px + 9, py + 16, 5, 1);
+                    g.FillRectangle(cicatriz, px + 19, py + 16, 5, 1);
+                }
+            }
+            else if (tipo == TipoPersonagem.YutaOkkotsu)
+            {
+                // Olheiras características do Yuta.
+                using (Pen olheira = new Pen(Color.FromArgb(145, 93, 84, 101), 1f))
+                {
+                    g.DrawLine(olheira, px + 9, py + 16, px + 15, py + 17);
+                    g.DrawLine(olheira, px + 18, py + 17, px + 24, py + 16);
+                }
+            }
+            else if (tipo == TipoPersonagem.Choso)
+            {
+                // Faixa escura horizontal cruzando o nariz (estilo pixel art).
+                using (Brush marca = new SolidBrush(Color.FromArgb(135, 70, 65)))
+                    g.FillRectangle(marca, px + 8, py + 16, 16, 3);
+                using (Brush fita = new SolidBrush(Color.FromArgb(128, 54, 86)))
+                {
+                    g.FillRectangle(fita, px - 1, py + 6, 5, 3);
+                    g.FillRectangle(fita, px + 29, py + 6, 5, 3);
+                }
+            }
+            else if (tipo == TipoPersonagem.TojiFushiguro)
+            {
+                // Cicatriz discreta no canto da boca.
+                using (Pen cicatriz = new Pen(Color.FromArgb(165, 93, 74), 1f))
+                {
+                    g.DrawLine(cicatriz, px + 21, py + 19, px + 25, py + 21);
+                    g.DrawLine(cicatriz, px + 25, py + 21, px + 28, py + 19);
+                }
+            }
 
             using (Brush b = new SolidBrush(roupa))
                 g.FillRectangle(b, px + 4, py + 21, 24, 12);
 
-            using (Brush b = new SolidBrush(Color.DarkSlateBlue))
+            if (tipo == TipoPersonagem.ItadoriYuji)
+            {
+                // Capuz e gola vermelhos sobre o uniforme preto.
+                using (Brush capuz = new SolidBrush(Color.FromArgb(180, 52, 65)))
+                {
+                    g.FillRectangle(capuz, px + 7, py + 21, 18, 4);
+                    g.FillRectangle(capuz, px + 13, py + 25, 6, 7);
+                }
+            }
+            else if (tipo == TipoPersonagem.YutaOkkotsu)
+            {
+                // Gola alta e fecho da jaqueta branca.
+                using (Brush gola = new SolidBrush(Color.FromArgb(249, 249, 250)))
+                using (Pen costura = new Pen(Color.FromArgb(100, 112, 132), 1f))
+                {
+                    g.FillRectangle(gola, px + 9, py + 18, 15, 8);
+                    g.DrawLine(costura, px + 15, py + 25, px + 15, py + 33);
+                    g.DrawLine(costura, px + 10, py + 25, px + 20, py + 25);
+                }
+            }
+            else if (tipo == TipoPersonagem.Choso)
+            {
+                // Gola roxa e faixa vermelho-vinho sobre o traje claro.
+                using (Brush gola = new SolidBrush(Color.FromArgb(82, 47, 85)))
+                using (Brush faixa = new SolidBrush(Color.FromArgb(149, 43, 66)))
+                {
+                    g.FillRectangle(gola, px + 8, py + 21, 16, 4);
+                    g.FillRectangle(faixa, px + 13, py + 25, 7, 8);
+                    g.FillRectangle(gola, px + 5, py + 26, 3, 7);
+                    g.FillRectangle(gola, px + 25, py + 26, 3, 7);
+                }
+            }
+            else if (tipo == TipoPersonagem.TojiFushiguro)
+            {
+                // Manga curta, braços à mostra e cintura da calça clara.
+                using (Brush cintura = new SolidBrush(Color.FromArgb(179, 171, 157)))
+                using (Brush braço = new SolidBrush(pele))
+                {
+                    g.FillRectangle(cintura, px + 6, py + 31, 20, 4);
+                    g.FillRectangle(braço, px + 1, py + 26, 4, 5);
+                    g.FillRectangle(braço, px + 27, py + 26, 4, 5);
+                }
+            }
+
+            Color corCalca = tipo == TipoPersonagem.TojiFushiguro
+                ? Color.FromArgb(201, 196, 182)
+                : tipo == TipoPersonagem.Choso
+                    ? Color.FromArgb(55, 43, 63)
+                    : Color.DarkSlateBlue;
+            using (Brush b = new SolidBrush(corCalca))
             {
                 g.FillRectangle(b, px + 7, py + 33, 7, 7 - passo);
                 g.FillRectangle(b, px + 18, py + 33, 7, 4 + passo);
             }
 
-            g.FillRectangle(Brushes.SaddleBrown, px + 6, py + 38, 8, 4);
-            g.FillRectangle(Brushes.SaddleBrown, px + 18, py + 38, 8, 4);
+            using (Brush bota = new SolidBrush(tipo == TipoPersonagem.TojiFushiguro
+                ? Color.FromArgb(35, 39, 38) : Color.SaddleBrown))
+            {
+                g.FillRectangle(bota, px + 6, py + 38, 8, 4);
+                g.FillRectangle(bota, px + 18, py + 38, 8, 4);
+            }
 
-            // O bastão pertence ao estilo dos personagens originais; Gojo e Sukuna
-            // lutam sem arma nesta versão inspirada no anime.
-            if (tipo != TipoPersonagem.GojoSatoru && tipo != TipoPersonagem.RyomenSukuna &&
-                tipo != TipoPersonagem.MegumiFushiguro)
+            // Armas: Yuta usa a katana; Toji usa a Lança Invertida do Céu.
+            // Choso projeta energia vermelha em seu ataque comum.
+            if (tipo == TipoPersonagem.YutaOkkotsu)
+            {
+                float cx = px + 16f;
+                float cy = py + 25f;
+                float comprimento = ataque > 0 ? 38f : 27f;
+                float dxArma = direcao == 1 ? -comprimento :
+                               direcao == 2 ? comprimento : 8f;
+                float dyArma = direcao == 0 ? comprimento :
+                               direcao == 3 ? -comprimento : 4f;
+
+                using (Pen cabo = new Pen(Color.FromArgb(55, 52, 66), 4f))
+                using (Pen lamina = new Pen(Color.FromArgb(214, 233, 248), 3f))
+                {
+                    cabo.StartCap = LineCap.Round;
+                    cabo.EndCap = LineCap.Round;
+                    lamina.StartCap = LineCap.Round;
+                    lamina.EndCap = LineCap.Round;
+                    g.DrawLine(cabo, cx, cy, cx + dxArma * 0.3f, cy + dyArma * 0.3f);
+                    g.DrawLine(lamina, cx + dxArma * 0.3f, cy + dyArma * 0.3f,
+                        cx + dxArma, cy + dyArma);
+                }
+                if (energiaYutaAtiva)
+                {
+                    using (Pen energia = new Pen(Color.FromArgb(205, 101, 193, 255), 4f))
+                        g.DrawLine(energia, cx + dxArma * 0.3f, cy + dyArma * 0.3f,
+                            cx + dxArma, cy + dyArma);
+                }
+            }
+            else if (tipo == TipoPersonagem.TojiFushiguro)
+            {
+                float cx = px + 16f, cy = py + 25f;
+                float comprimento = ataque > 0 ? 43f : 31f;
+                float dxArma = direcao == 1 ? -comprimento :
+                               direcao == 2 ? comprimento : 7f;
+                float dyArma = direcao == 0 ? comprimento :
+                               direcao == 3 ? -comprimento : -5f;
+
+                using (Pen empunhadura = new Pen(Color.FromArgb(67, 52, 57), 5f))
+                using (Pen lamina = new Pen(Color.FromArgb(174, 204, 194), 4f))
+                using (Pen fio = new Pen(Color.FromArgb(110, 242, 186), 1.5f))
+                {
+                    empunhadura.StartCap = LineCap.Round;
+                    lamina.EndCap = LineCap.Round;
+                    g.DrawLine(empunhadura, cx, cy,
+                        cx + dxArma * 0.45f, cy + dyArma * 0.45f);
+                    g.DrawLine(lamina, cx + dxArma * 0.45f, cy + dyArma * 0.45f,
+                        cx + dxArma, cy + dyArma);
+                    g.DrawLine(fio, cx + dxArma * 0.65f, cy + dyArma * 0.65f,
+                        cx + dxArma, cy + dyArma);
+                }
+                // A lâmina em formato de punhal tem um dente lateral.
+                using (Pen gancho = new Pen(Color.FromArgb(175, 214, 203), 3f))
+                    g.DrawLine(gancho, cx + dxArma * 0.69f, cy + dyArma * 0.69f,
+                        cx + dxArma * 0.69f - dyArma * 0.18f,
+                        cy + dyArma * 0.69f + dxArma * 0.18f);
+            }
+            else if (tipo == TipoPersonagem.NaoyaZenin)
             {
                 int comprimento = ataque > 0 ? 34 : 22;
-
                 using (Pen bastao = new Pen(Color.SaddleBrown, 5))
                 {
                     bastao.StartCap = LineCap.Round;
                     bastao.EndCap = LineCap.Round;
-
-                    float cx = px + 16;
-                    float cy = py + 25;
-
+                    float cx = px + 16f;
+                    float cy = py + 25f;
                     if (direcao == 0)
                         g.DrawLine(bastao, cx + 9, cy, cx + 9, cy + comprimento);
                     else if (direcao == 3)
@@ -2083,6 +2910,28 @@ namespace movimento
                         g.DrawLine(bastao, cx, cy + 5, cx - comprimento, cy + 5);
                     else
                         g.DrawLine(bastao, cx, cy + 5, cx + comprimento, cy + 5);
+                }
+            }
+            else if (tipo == TipoPersonagem.ItadoriYuji && ataque > 0)
+            {
+                // Punho coberto de energia vermelha.
+                float maoX = direcao == 1 ? px - 8f : px + 31f;
+                using (Pen flash = new Pen(Color.FromArgb(220, 235, 73, 110), 4f))
+                    g.DrawEllipse(flash, maoX - 8f, py + 17f, 17f, 17f);
+            }
+            else if (tipo == TipoPersonagem.Choso && ataque > 0)
+            {
+                // Pequeno disparo estilizado de energia carmesim.
+                float sentidoX = direcao == 1 ? -1f : direcao == 2 ? 1f : 0f;
+                float sentidoY = direcao == 0 ? 1f : direcao == 3 ? -1f : 0f;
+                float cx = px + 16f, cy = py + 24f;
+                using (Pen disparo = new Pen(Color.FromArgb(235, 189, 37, 69), 5f))
+                using (Pen brilho = new Pen(Color.FromArgb(240, 255, 192, 207), 1.5f))
+                {
+                    disparo.StartCap = LineCap.Round;
+                    disparo.EndCap = LineCap.Round;
+                    g.DrawLine(disparo, cx, cy, cx + sentidoX * 33f, cy + sentidoY * 33f);
+                    g.DrawLine(brilho, cx, cy, cx + sentidoX * 33f, cy + sentidoY * 33f);
                 }
             }
 
@@ -2096,25 +2945,46 @@ namespace movimento
                 }
             }
 
-            if (fogoAtivo)
+            if (energiaYutaAtiva && tipo == TipoPersonagem.YutaOkkotsu)
             {
-                using (Pen p = new Pen(Color.OrangeRed, 3))
+                using (Pen p = new Pen(Color.FromArgb(125, 194, 255), 3f))
                     g.DrawRectangle(p, px - 3, py - 3, 38, 46);
             }
         }
 
         private void DesenharTelaVitoria(Graphics g)
         {
-            using (Brush b = new SolidBrush(Color.FromArgb(200, 0, 0, 0)))
-                g.FillRectangle(b, ClientRectangle);
-
-            using (Font f = new Font("Arial", 32, FontStyle.Bold))
+            TipoPersonagem campeao = vida1 <= 0 ? personagem2 : personagem1;
+            Color cor = CorPersonagem(campeao);
+            float cx = ClientSize.Width / 2f, cy = ClientSize.Height / 2f;
+            using (Brush sombra = new SolidBrush(Color.FromArgb(220, 3, 6, 17)))
+                g.FillRectangle(sombra, ClientRectangle);
+            using (Pen anel = new Pen(Color.FromArgb(110, cor), 4f))
+            using (Pen anel2 = new Pen(Color.FromArgb(75, 218, 230, 253), 2f))
             {
-                SizeF tamanho = g.MeasureString(vencedor, f);
-
-                g.DrawString(vencedor, f, Brushes.Gold,
-                    (ClientSize.Width - tamanho.Width) / 2,
-                    (ClientSize.Height - tamanho.Height) / 2);
+                g.DrawEllipse(anel, cx - 195, cy - 195, 390, 390);
+                g.DrawEllipse(anel2, cx - 155, cy - 155, 310, 310);
+            }
+            using (Brush painel = new SolidBrush(Color.FromArgb(246, 18, 23, 40)))
+            using (Pen borda = new Pen(Color.FromArgb(205, cor), 2f))
+            {
+                g.FillRectangle(painel, cx - 278, cy - 135, 556, 267);
+                g.DrawRectangle(borda, cx - 278, cy - 135, 556, 267);
+            }
+            using (Font pequeno = new Font("Segoe UI", 12, FontStyle.Bold))
+            using (Font titulo = new Font("Segoe UI", 30, FontStyle.Bold))
+            using (Font nome = new Font("Segoe UI", 19, FontStyle.Bold))
+            using (Brush destaque = new SolidBrush(cor))
+            using (StringFormat centro = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                g.DrawString("FIM DE COMBATE  ·  ARENA JUJUTSU", pequeno, destaque,
+                    new RectangleF(cx - 265, cy - 110, 530, 28), centro);
+                g.DrawString(vida1 <= 0 ? "JOGADOR 2 VENCEU" : "JOGADOR 1 VENCEU", titulo,
+                    Brushes.White, new RectangleF(cx - 260, cy - 58, 520, 64), centro);
+                g.DrawString(NomePersonagem(campeao).ToUpperInvariant(), nome, destaque,
+                    new RectangleF(cx - 260, cy + 17, 520, 40), centro);
+                g.DrawString("USE REINICIAR ACIMA PARA UMA REVANCHE", pequeno, Brushes.Gainsboro,
+                    new RectangleF(cx - 250, cy + 79, 500, 30), centro);
             }
         }
 

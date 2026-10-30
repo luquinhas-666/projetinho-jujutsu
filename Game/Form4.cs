@@ -385,16 +385,8 @@ namespace movimento
             }
 
             g.SmoothingMode = SmoothingMode.None;
-            g.Clear(Color.FromArgb(95, 155, 85));
-
-            using (Pen grade = new Pen(Color.FromArgb(80, 130, 70)))
-            {
-                for (int i = 0; i < ClientSize.Width; i += 32)
-                    g.DrawLine(grade, i, 0, i, ClientSize.Height);
-
-                for (int i = 0; i < ClientSize.Height; i += 32)
-                    g.DrawLine(grade, 0, i, ClientSize.Width, i);
-            }
+            ArenaVisual.Desenhar(g, ClientSize.Width, ClientSize.Height, "BATALHA DE PODERES");
+            g.SmoothingMode = SmoothingMode.None;
 
             DesenharBarraVida(g, 20, 20, vida1, Color.DodgerBlue,
                 "JOGADOR 1 - " + personagem1);
