@@ -89,6 +89,83 @@ namespace movimento
         private int tremorQuadros;
         private int tempoArena;
 
+        // Passivas automáticas. Os estados são individuais para os dois jogadores.
+        private int comboItadori1, comboItadori2;
+        private int cargaNaoya1, cargaNaoya2;
+        private int recargaInfinito1, recargaInfinito2;
+        private int avisoPassiva1, avisoPassiva2;
+        private string textoPassiva1 = "", textoPassiva2 = "";
+
+        private void MostrarPassiva(int jogador, string mensagem)
+        {
+            if (jogador == 1)
+            {
+                textoPassiva1 = mensagem;
+                avisoPassiva1 = 50; // 1,5 segundo
+            }
+            else
+            {
+                textoPassiva2 = mensagem;
+                avisoPassiva2 = 50;
+            }
+        }
+
+        private string NomePassiva(TipoPersonagem tipo)
+        {
+            switch (tipo)
+            {
+                case TipoPersonagem.ItadoriYuji: return "Ritmo Divergente";
+                case TipoPersonagem.YutaOkkotsu: return "Energia Reversa";
+                case TipoPersonagem.Choso: return "Sangue Concentrado";
+                case TipoPersonagem.TojiFushiguro: return "Restrição Celestial";
+                case TipoPersonagem.NaoyaZenin: return "Movimento Projetado";
+                case TipoPersonagem.GojoSatoru: return "Infinito";
+                case TipoPersonagem.RyomenSukuna: return "Instinto do Rei";
+                case TipoPersonagem.MegumiFushiguro: return "Vínculo das Sombras";
+                default: return "Sem passiva";
+            }
+        }
+
+        private string DetalhePassiva(TipoPersonagem tipo)
+        {
+            switch (tipo)
+            {
+                case TipoPersonagem.ItadoriYuji: return "Cada 3 golpes acertados: +7 dano.";
+                case TipoPersonagem.YutaOkkotsu: return "Golpes acertados restauram 3 de vida.";
+                case TipoPersonagem.Choso: return "Com 50 ou menos de vida: +5 dano.";
+                case TipoPersonagem.TojiFushiguro: return "Movimento 25% mais rápido.";
+                case TipoPersonagem.NaoyaZenin: return "Mova-se por 20 quadros: +4 no golpe.";
+                case TipoPersonagem.GojoSatoru: return "Bloqueia 1 golpe básico a cada 8s.";
+                case TipoPersonagem.RyomenSukuna: return "Contra rivais com até 40 vida: +5 dano.";
+                case TipoPersonagem.MegumiFushiguro: return "Sombras: +10 de vida e +2 de dano.";
+                default: return "";
+            }
+        }
+
+        private string EstadoPassiva(int jogador, TipoPersonagem tipo)
+        {
+            int hp = jogador == 1 ? vida1 : vida2;
+            int hpRival = jogador == 1 ? vida2 : vida1;
+            switch (tipo)
+            {
+                case TipoPersonagem.ItadoriYuji:
+                    return "COMBO " + (jogador == 1 ? comboItadori1 : comboItadori2) + "/3";
+                case TipoPersonagem.YutaOkkotsu: return "CURA +3 NO ACERTO";
+                case TipoPersonagem.Choso: return hp <= 50 ? "ATIVADA (+5)" : "ATIVA COM VIDA <= 50";
+                case TipoPersonagem.TojiFushiguro: return "VELOCIDADE +25%";
+                case TipoPersonagem.NaoyaZenin:
+                    return "CARGA " + Math.Min(20, jogador == 1 ? cargaNaoya1 : cargaNaoya2) + "/20";
+                case TipoPersonagem.GojoSatoru:
+                    int espera = jogador == 1 ? recargaInfinito1 : recargaInfinito2;
+                    return espera == 0 ? "ESCUDO PRONTO" : "ESCUDO EM " + ((espera * 30 + 999) / 1000) + "s";
+                case TipoPersonagem.RyomenSukuna:
+                    return hpRival <= 40 ? "EXECUÇÃO ATIVA (+5)" : "ATIVA COM RIVAL <= 40";
+                case TipoPersonagem.MegumiFushiguro:
+                    return "SOMBRAS REFORÇADAS";
+                default: return "";
+            }
+        }
+
         // Cutscene unificada para os quatro novos feiticeiros.
         // Etapas: preparação, técnica especial e impacto final.
         private bool cutsceneQuartetoAtiva = false;
@@ -298,6 +375,12 @@ namespace movimento
                 SombraInvocada aliada = jogador == 1 ? sombraJogador1 : sombraJogador2;
                 if (aliada != null && aliada.Ativa) dano += 5;
             }
+            // Bônus condicionais de Choso e Sukuna aplicam-se ao dano básico.
+            bool sangueConcentrado = tipo == TipoPersonagem.Choso &&
+                (jogador == 1 ? vida1 : vida2) <= 50;
+            bool instintoDoRei = tipo == TipoPersonagem.RyomenSukuna &&
+                (jogador == 1 ? vida2 : vida1) <= 40;
+            if (sangueConcentrado || instintoDoRei) dano += 5;
 
             if (jogador == 1) { cooldown1 = recarga; ataque1 = 10; ataqueYuta1 = false; }
             else { cooldown2 = recarga; ataque2 = 10; ataqueYuta2 = false; }
@@ -332,33 +415,85 @@ namespace movimento
                 if (Math.Sqrt(dx * dx + dy * dy) <= alcance &&
                     EstaNaFrente(direcao, dx, dy))
                 {
-                    if (jogador == 1)
+                    int rival = jogador == 1 ? 2 : 1;
+                    TipoPersonagem tipoRival = rival == 1 ? personagem1 : personagem2;
+                    int recargaEscudo = rival == 1 ? recargaInfinito1 : recargaInfinito2;
+                    bool bloqueado = tipoRival == TipoPersonagem.GojoSatoru && recargaEscudo == 0;
+
+                    // Infinito de Gojo impede dano, controle e segundo impacto
+                    // de um único golpe BÁSICO; especiais não são bloqueados.
+                    if (bloqueado)
                     {
-                        vida2 = Math.Max(0, vida2 - dano);
-                        congelado2 = Math.Max(congelado2, atordoamento);
-                        if (repulsao > 0)
-                        {
-                            x2 += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
-                            y2 += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
-                        }
-                        if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori1 = 7;
+                        if (rival == 1) recargaInfinito1 = 266; // ~8 segundos
+                        else recargaInfinito2 = 266;
+                        MostrarPassiva(rival, "INFINITO! GOLPE BLOQUEADO");
+                        tremorQuadros = Math.Max(tremorQuadros, 4);
                     }
                     else
                     {
-                        vida1 = Math.Max(0, vida1 - dano);
-                        congelado1 = Math.Max(congelado1, atordoamento);
-                        if (repulsao > 0)
+                        if (tipo == TipoPersonagem.ItadoriYuji)
                         {
-                            x += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
-                            y += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
+                            int combo = jogador == 1 ? ++comboItadori1 : ++comboItadori2;
+                            if (combo >= 3)
+                            {
+                                dano += 7;
+                                if (jogador == 1) comboItadori1 = 0;
+                                else comboItadori2 = 0;
+                                MostrarPassiva(jogador, "RITMO DIVERGENTE! +7");
+                            }
                         }
-                        if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori2 = 7;
+                        if (tipo == TipoPersonagem.NaoyaZenin &&
+                            (jogador == 1 ? cargaNaoya1 : cargaNaoya2) >= 20)
+                        {
+                            dano += 4;
+                            if (jogador == 1) cargaNaoya1 = 0;
+                            else cargaNaoya2 = 0;
+                            MostrarPassiva(jogador, "MOVIMENTO PROJETADO! +4");
+                        }
+
+                        if (jogador == 1)
+                        {
+                            vida2 = Math.Max(0, vida2 - dano);
+                            congelado2 = Math.Max(congelado2, atordoamento);
+                            if (repulsao > 0)
+                            {
+                                x2 += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
+                                y2 += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
+                            }
+                            if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori1 = 7;
+                        }
+                        else
+                        {
+                            vida1 = Math.Max(0, vida1 - dano);
+                            congelado1 = Math.Max(congelado1, atordoamento);
+                            if (repulsao > 0)
+                            {
+                                x += (direcao == 2 ? 1 : direcao == 1 ? -1 : 0) * repulsao;
+                                y += (direcao == 0 ? 1 : direcao == 3 ? -1 : 0) * repulsao;
+                            }
+                            if (tipo == TipoPersonagem.ItadoriYuji) ecoItadori2 = 7;
+                        }
+
+                        if (tipo == TipoPersonagem.YutaOkkotsu)
+                        {
+                            int antes = jogador == 1 ? vida1 : vida2;
+                            if (jogador == 1) vida1 = Math.Min(100, vida1 + 3);
+                            else vida2 = Math.Min(100, vida2 + 3);
+                            int recuperado = (jogador == 1 ? vida1 : vida2) - antes;
+                            if (recuperado > 0)
+                                MostrarPassiva(jogador, "ENERGIA REVERSA! +" + recuperado + " VIDA");
+                        }
+                        if (sangueConcentrado)
+                            MostrarPassiva(jogador, "SANGUE CONCENTRADO! +5");
+                        if (instintoDoRei)
+                            MostrarPassiva(jogador, "INSTINTO DO REI! +5");
+                        tremorQuadros = Math.Max(tremorQuadros,
+                            tipo == TipoPersonagem.TojiFushiguro ? 6 : 4);
+                        LimitarPosicoes();
+                        VerificarVencedor();
                     }
-                    LimitarPosicoes();
                     acertou = true;
                     impactoX = tx; impactoY = ty;
-                    tremorQuadros = Math.Max(tremorQuadros, tipo == TipoPersonagem.TojiFushiguro ? 6 : 4);
-                    VerificarVencedor();
                 }
             }
 
@@ -990,6 +1125,13 @@ namespace movimento
                 case 9: nova.Velocidade = 3.1f; nova.Dano = 12; nova.IntervaloAtaque = 34; break; // Mahoraga
             }
 
+            // Passiva de Megumi: todos os shikigamis nascem mais resistentes
+            // e causam mais dano, independentemente da espécie sorteada.
+            nova.VidaMaxima += 10;
+            nova.Vida = nova.VidaMaxima;
+            nova.Dano += 2;
+            MostrarPassiva(megumiJogador, "VÍNCULO DAS SOMBRAS! +VIDA/+DANO");
+
             if (megumiJogador == 1)
                 sombraJogador1 = nova;
             else
@@ -1138,6 +1280,10 @@ namespace movimento
             }
 
             tempoArena++;
+            if (recargaInfinito1 > 0) recargaInfinito1--;
+            if (recargaInfinito2 > 0) recargaInfinito2--;
+            if (avisoPassiva1 > 0) avisoPassiva1--;
+            if (avisoPassiva2 > 0) avisoPassiva2--;
             if (tremorQuadros > 0) tremorQuadros--;
             for (int i = efeitosGolpe.Count - 1; i >= 0; i--)
             {
@@ -1228,8 +1374,12 @@ namespace movimento
             else if (andando)
             {
                 float d = (float)Math.Sqrt(dx * dx + dy * dy);
-                x += dx / d * Velocidade;
-                y += dy / d * Velocidade;
+                float v1 = personagem1 == TipoPersonagem.TojiFushiguro
+                    ? Velocidade * 1.25f : Velocidade;
+                x += dx / d * v1;
+                y += dy / d * v1;
+                if (personagem1 == TipoPersonagem.NaoyaZenin)
+                    cargaNaoya1 = Math.Min(20, cargaNaoya1 + 1);
 
                 AtualizarDirecao(dx, dy, 1);
 
@@ -1259,8 +1409,12 @@ namespace movimento
             else if (andando2)
             {
                 float d2 = (float)Math.Sqrt(dx2 * dx2 + dy2 * dy2);
-                x2 += dx2 / d2 * Velocidade;
-                y2 += dy2 / d2 * Velocidade;
+                float v2 = personagem2 == TipoPersonagem.TojiFushiguro
+                    ? Velocidade * 1.25f : Velocidade;
+                x2 += dx2 / d2 * v2;
+                y2 += dy2 / d2 * v2;
+                if (personagem2 == TipoPersonagem.NaoyaZenin)
+                    cargaNaoya2 = Math.Min(20, cargaNaoya2 + 1);
 
                 AtualizarDirecao(dx2, dy2, 2);
 
@@ -1343,6 +1497,8 @@ namespace movimento
                 andando2, quadroAnimacao2, direcao2, ataque2, congelado2, ataqueYuta2, dashVisual2);
             DesenharSombraInvocada(g, sombraJogador1);
             DesenharSombraInvocada(g, sombraJogador2);
+            DesenharAuraPassiva(g, x, y, 1, personagem1);
+            DesenharAuraPassiva(g, x2, y2, 2, personagem2);
 
             g.SmoothingMode = SmoothingMode.AntiAlias;
             DesenharEfeitosGolpe(g);
@@ -1493,6 +1649,76 @@ namespace movimento
                 g.DrawString(vida + " / 100", miudo, branco, bx + largura - 65, by + 25);
                 g.DrawString(recarga == 0 ? "ESPECIAL PRONTO" : "ENERGIA AMALDIÇOADA",
                     miudo, cinza, bx + 14, by + 54);
+            }
+
+            // Barra pequena abaixo do HUD com o estado da passiva.
+            int aviso = jogador == 1 ? avisoPassiva1 : avisoPassiva2;
+            string mensagem = jogador == 1 ? textoPassiva1 : textoPassiva2;
+            bool ativacao = aviso > 0;
+            string estado = ativacao ? mensagem :
+                NomePassiva(tipo).ToUpperInvariant() + " · " + EstadoPassiva(jogador, tipo);
+            using (Brush fundoPassiva = new SolidBrush(Color.FromArgb(234, 12, 21, 36)))
+            using (Pen bordaPassiva = new Pen(Color.FromArgb(ativacao ? 210 : 115, cor), 1f))
+            using (Brush textoPassiva = new SolidBrush(
+                ativacao ? Color.FromArgb(255, 251, 220, 128) : Color.FromArgb(240, 205, 226, 242)))
+            using (Font fontePassiva = new Font("Segoe UI", 7.5f, FontStyle.Bold))
+            using (StringFormat alinhamento = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center,
+                Trimming = StringTrimming.EllipsisCharacter,
+                FormatFlags = StringFormatFlags.NoWrap
+            })
+            {
+                RectangleF placa = new RectangleF(bx, by + 86, largura, 23);
+                g.FillRectangle(fundoPassiva, placa);
+                g.DrawRectangle(bordaPassiva, placa.X, placa.Y, placa.Width, placa.Height);
+                g.DrawString(estado, fontePassiva, textoPassiva,
+                    new RectangleF(bx + 4, by + 87, largura - 8, 21), alinhamento);
+            }
+        }
+
+        // Sinal visual discreto quando a passiva está pronta ou fortalecida.
+        private void DesenharAuraPassiva(Graphics g, float px, float py,
+            int jogador, TipoPersonagem tipo)
+        {
+            bool ativa = (jogador == 1 ? avisoPassiva1 : avisoPassiva2) > 0;
+            switch (tipo)
+            {
+                case TipoPersonagem.ItadoriYuji:
+                    ativa |= (jogador == 1 ? comboItadori1 : comboItadori2) >= 2;
+                    break;
+                case TipoPersonagem.Choso:
+                    ativa |= (jogador == 1 ? vida1 : vida2) <= 50;
+                    break;
+                case TipoPersonagem.TojiFushiguro:
+                    ativa |= (jogador == 1 ? andando : andando2);
+                    break;
+                case TipoPersonagem.NaoyaZenin:
+                    ativa |= (jogador == 1 ? cargaNaoya1 : cargaNaoya2) >= 20;
+                    break;
+                case TipoPersonagem.GojoSatoru:
+                    ativa |= (jogador == 1 ? recargaInfinito1 : recargaInfinito2) == 0;
+                    break;
+                case TipoPersonagem.RyomenSukuna:
+                    ativa |= (jogador == 1 ? vida2 : vida1) <= 40;
+                    break;
+                case TipoPersonagem.MegumiFushiguro:
+                    SombraInvocada sombra = jogador == 1 ? sombraJogador1 : sombraJogador2;
+                    ativa |= sombra != null && sombra.Ativa;
+                    break;
+            }
+            if (!ativa) return;
+
+            Color cor = CorPersonagem(tipo);
+            float brilho = 3f + (float)Math.Sin(tempoArena * 0.16) * 2f;
+            using (Pen anel = new Pen(Color.FromArgb(180, cor), 2f))
+            using (Pen segundo = new Pen(Color.FromArgb(80, cor), 1f))
+            {
+                g.DrawEllipse(anel, px - 7f - brilho, py + 24f - brilho * 0.4f,
+                    47f + brilho * 2f, 13f + brilho);
+                g.DrawEllipse(segundo, px - 12f - brilho, py - 5f - brilho,
+                    56f + brilho * 2f, 52f + brilho * 2f);
             }
         }
 
@@ -2266,11 +2492,11 @@ namespace movimento
             using (Brush dourado = new SolidBrush(Color.FromArgb(255, 240, 207, 112)))
             using (StringFormat centralizado = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
-                string textoTitulo = "ESCOLHE SEU FEITICEIRO";
+                string textoTitulo = "JUJUTSU ARENA  /  ESCOLHA SEU LUTADOR";
                 g.DrawString(textoTitulo, titulo, dourado,
                     new RectangleF(0, 8, LarguraBase, 38), centralizado);
 
-                string subt = "8 PERSONAGEMS  ·  GOLPES LEGAIS  ·  2 JOGADORES";
+                string subt = "8 LUTADORES  ·  GOLPES ÚNICOS  ·  2 JOGADORES LOCAIS";
                 g.DrawString(subt, subtitulo, branco,
                     new RectangleF(0, 45, LarguraBase, 24), centralizado);
             }
@@ -2311,10 +2537,18 @@ namespace movimento
                     new RectangleF(0, 586, LarguraBase, 22), centralizado);
                 g.DrawString("GOLPE: " + DescricaoGolpeBasico((TipoPersonagem)escolha1),
                     rodape, Brushes.DeepSkyBlue,
-                    new RectangleF(painel1X, 615, painelLargura, 22), centralizado);
+                    new RectangleF(painel1X, 608, painelLargura, 20), centralizado);
                 g.DrawString("GOLPE: " + DescricaoGolpeBasico((TipoPersonagem)escolha2),
                     rodape, Brushes.LightCoral,
-                    new RectangleF(painel2X, 615, painelLargura, 22), centralizado);
+                    new RectangleF(painel2X, 608, painelLargura, 20), centralizado);
+                g.DrawString("PASSIVA - " + NomePassiva((TipoPersonagem)escolha1) + ": " +
+                    DetalhePassiva((TipoPersonagem)escolha1),
+                    rodape, Brushes.Gold,
+                    new RectangleF(painel1X, 628, painelLargura, 20), centralizado);
+                g.DrawString("PASSIVA - " + NomePassiva((TipoPersonagem)escolha2) + ": " +
+                    DetalhePassiva((TipoPersonagem)escolha2),
+                    rodape, Brushes.Gold,
+                    new RectangleF(painel2X, 628, painelLargura, 20), centralizado);
             }
         }
 
